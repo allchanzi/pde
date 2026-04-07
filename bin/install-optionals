@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
+if [[ ! -f "$CONFIG_PREFS_HELPER" ]]; then
+  echo "config-prefs helper not found at $CONFIG_PREFS_HELPER" >&2
+  exit 0
+fi
+
+# shellcheck source=/dev/null
+source "$CONFIG_PREFS_HELPER"
+config_prefs_migrate
+config_prefs_load
+
+ensure_brew() {
+  if command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  elif [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+  fi
+}
+
+install_npm_package() {
+  local package="$1"
+  if npm list -g --depth=0 "$package" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Installing optional npm package: $package"
+  npm install -g "$package"
+}
+
+main() {
+  local ai_profile="${AI_PROFILE:-}"
+  local cmd1="${AI_COMMAND_1:-}"
+  local cmd2="${AI_COMMAND_2:-}"
+  local tools=()
+  local tool
+
+  if [[ -z "$ai_profile" || "$ai_profile" == "none" || "$ai_profile" == "custom" ]]; then
+    exit 0
+  fi
+
+  for tool in "${cmd1%% *}" "${cmd2%% *}"; do
+    case "$tool" in
+      codex) tools+=("@openai/codex") ;;
+      claude) tools+=("@anthropic-ai/claude-code") ;;
+    esac
+  done
+
+  if [[ ${#tools[@]} -eq 0 ]]; then
+    exit 0
+  fi
+
+  ensure_brew
+
+  if ! command -v npm >/dev/null 2>&1; then
+    if ! command -v brew >/dev/null 2>&1; then
+      echo "npm is not available and brew could not be loaded; skipping optional AI tool install." >&2
+      exit 0
+    fi
+
+    echo "Installing Node.js for optional AI tools..."
+    brew install node
+  fi
+
+  install_npm_package "${tools[0]}"
+  if [[ ${#tools[@]} -gt 1 && "${tools[1]}" != "${tools[0]}" ]]; then
+    install_npm_package "${tools[1]}"
+  fi
+}
+
+main "$@"

@@ -1,0 +1,751 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+
+CONFIG_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+THEMES_DIR="$CONFIG_DIR/themes"
+CURRENT_FILE="$THEMES_DIR/current"
+
+CATPPUCCIN_CACHE="$HOME/.cache/catppuccin"
+
+# Portable sed -i (macOS requires '' argument, GNU sed does not)
+_sed_i() {
+  if [[ "$OSTYPE" == darwin* ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  theme               Interactive picker (arrow keys + Enter)
+  theme list          List available themes
+  theme current       Show active theme
+  theme apply <name>  Apply theme directly
+  theme update        Download latest catppuccin configs from GitHub
+
+Examples:
+  theme
+  theme update
+  theme apply catppuccin-mocha
+EOF
+}
+
+update_catppuccin() {
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "curl not found" >&2; exit 1
+  fi
+
+  echo "Downloading catppuccin themes from GitHub..."
+  mkdir -p "$CATPPUCCIN_CACHE"
+
+  local base="https://raw.githubusercontent.com/catppuccin"
+
+  for flavor in mocha latte; do
+    echo "  kitty                  $flavor"
+    curl -fsSL "$base/kitty/main/themes/${flavor}.conf" \
+      -o "$CATPPUCCIN_CACHE/kitty-${flavor}.conf"
+
+    echo "  ghostty                $flavor"
+    curl -fsSL "$base/ghostty/main/themes/catppuccin-${flavor}.conf" \
+      -o "$CATPPUCCIN_CACHE/ghostty-${flavor}.conf"
+
+    echo "  alacritty              $flavor"
+    curl -fsSL "$base/alacritty/main/catppuccin-${flavor}.toml" \
+      -o "$CATPPUCCIN_CACHE/alacritty-${flavor}.toml"
+
+    echo "  zsh-syntax-highlighting $flavor"
+    curl -fsSL "$base/zsh-syntax-highlighting/main/themes/catppuccin_${flavor}-zsh-syntax-highlighting.zsh" \
+      -o "$CATPPUCCIN_CACHE/zsh-syntax-${flavor}.zsh"
+
+    echo "  fzf                    $flavor"
+    curl -fsSL "$base/fzf/main/themes/catppuccin-fzf-${flavor}.sh" \
+      -o "$CATPPUCCIN_CACHE/fzf-${flavor}.sh"
+
+    echo "  lazygit                $flavor"
+    curl -fsSL "$base/lazygit/main/themes/${flavor}/blue.yml" \
+      -o "$CATPPUCCIN_CACHE/lazygit-${flavor}.yml"
+
+    echo "  btop                   $flavor"
+    curl -fsSL "$base/btop/main/themes/catppuccin_${flavor}.theme" \
+      -o "$CATPPUCCIN_CACHE/btop-${flavor}.theme"
+  done
+
+  echo "Done. Cached to $CATPPUCCIN_CACHE"
+}
+
+list_themes() {
+  find "$THEMES_DIR" -maxdepth 1 -type f -name '*.sh' -print \
+    | sed 's#.*/##' \
+    | sed 's/\.sh$//' \
+    | sort
+}
+
+load_theme() {
+  local theme_name="$1"
+  local theme_file="$THEMES_DIR/$theme_name.sh"
+
+  if [[ ! -f "$theme_file" ]]; then
+    echo "Unknown theme: $theme_name" >&2
+    exit 1
+  fi
+
+  # shellcheck disable=SC1090
+  source "$theme_file"
+}
+
+write_alacritty_theme() {
+  local flavor="${THEME_NAME#catppuccin-}"
+  local cache="$CATPPUCCIN_CACHE/alacritty-${flavor}.toml"
+
+  if [[ "$THEME_NAME" == catppuccin-* && -f "$cache" ]]; then
+    {
+      printf '[window]\nopacity = %s\ndecorations_theme_variant = "%s"\n\n' \
+        "$ALACRITTY_OPACITY" "$DECORATIONS_THEME_VARIANT"
+      cat "$cache"
+    } > "$CONFIG_DIR/alacritty/theme.toml"
+    return
+  fi
+
+  cat > "$CONFIG_DIR/alacritty/theme.toml" <<EOF
+[window]
+opacity = $ALACRITTY_OPACITY
+decorations_theme_variant = "$DECORATIONS_THEME_VARIANT"
+
+[colors.primary]
+background = "$BASE"
+foreground = "$TEXT"
+dim_foreground = "$SUBTLE"
+bright_foreground = "$TEXT"
+
+[colors.cursor]
+text = "$BASE"
+cursor = "$ROSEWATER"
+
+[colors.vi_mode_cursor]
+text = "$BASE"
+cursor = "$LAVENDER"
+
+[colors.selection]
+text = "$BASE"
+background = "$ROSEWATER"
+
+[colors.search.matches]
+foreground = "$BASE"
+background = "$SUBTEXT0"
+
+[colors.search.focused_match]
+foreground = "$BASE"
+background = "$GREEN"
+
+[colors.footer_bar]
+foreground = "$BASE"
+background = "$SUBTEXT0"
+
+[colors.hints.start]
+foreground = "$BASE"
+background = "$YELLOW"
+
+[colors.hints.end]
+foreground = "$BASE"
+background = "$SUBTEXT0"
+
+[colors.line_indicator]
+foreground = "None"
+background = "None"
+
+[colors.normal]
+black = "$SURFACE1"
+red = "$RED"
+green = "$GREEN"
+yellow = "$YELLOW"
+blue = "$BLUE"
+magenta = "$PINK"
+cyan = "$CYAN"
+white = "$SUBTEXT1"
+
+[colors.bright]
+black = "$SURFACE2"
+red = "$RED"
+green = "$GREEN"
+yellow = "$YELLOW"
+blue = "$BLUE"
+magenta = "$PINK"
+cyan = "$CYAN"
+white = "$SUBTEXT0"
+
+[colors.dim]
+black = "$SURFACE0"
+red = "$RED"
+green = "$GREEN"
+yellow = "$YELLOW"
+blue = "$BLUE"
+magenta = "$PINK"
+cyan = "$CYAN"
+white = "$OVERLAY1"
+EOF
+}
+
+write_kitty_theme() {
+  local flavor="${THEME_NAME#catppuccin-}"
+  local cache="$CATPPUCCIN_CACHE/kitty-${flavor}.conf"
+
+  if [[ "$THEME_NAME" == catppuccin-* && -f "$cache" ]]; then
+    cp "$cache" "$CONFIG_DIR/kitty/theme.conf"
+    return
+  fi
+
+  cat > "$CONFIG_DIR/kitty/theme.conf" <<EOF
+# Cursor
+cursor                  $ROSEWATER
+cursor_text_color       $BASE
+cursor_blink_interval   0
+
+# Primary
+foreground              $TEXT
+background              $BASE
+selection_foreground    $BASE
+selection_background    $ROSEWATER
+
+# Normal
+color0  $SURFACE1
+color1  $RED
+color2  $GREEN
+color3  $YELLOW
+color4  $BLUE
+color5  $PINK
+color6  $CYAN
+color7  $SUBTEXT1
+
+# Bright
+color8  $SURFACE2
+color9  $RED
+color10 $GREEN
+color11 $YELLOW
+color12 $BLUE
+color13 $PINK
+color14 $CYAN
+color15 $SUBTEXT0
+EOF
+}
+
+write_ghostty_theme() {
+  local flavor="${THEME_NAME#catppuccin-}"
+  local cache="$CATPPUCCIN_CACHE/ghostty-${flavor}.conf"
+
+  if [[ "$THEME_NAME" == catppuccin-* && -f "$cache" ]]; then
+    cp "$cache" "$CONFIG_DIR/ghostty/theme"
+    return
+  fi
+
+  cat > "$CONFIG_DIR/ghostty/theme" <<EOF
+background = ${BASE#\#}
+foreground = ${TEXT#\#}
+cursor-color = ${ROSEWATER#\#}
+cursor-text = ${BASE#\#}
+selection-background = ${ROSEWATER#\#}
+selection-foreground = ${BASE#\#}
+palette = 0=${SURFACE1}
+palette = 1=${RED}
+palette = 2=${GREEN}
+palette = 3=${YELLOW}
+palette = 4=${BLUE}
+palette = 5=${PINK}
+palette = 6=${CYAN}
+palette = 7=${SUBTEXT1}
+palette = 8=${SURFACE2}
+palette = 9=${RED}
+palette = 10=${GREEN}
+palette = 11=${YELLOW}
+palette = 12=${BLUE}
+palette = 13=${PINK}
+palette = 14=${CYAN}
+palette = 15=${SUBTEXT0}
+EOF
+}
+
+write_zellij_theme() {
+  _hex_to_rgb() {
+    local hex="${1#\#}"
+    printf "%d %d %d" "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+  }
+
+  # Map to zellij built-in theme if available
+  local zellij_theme
+  case "$THEME_NAME" in
+    catppuccin-mocha) zellij_theme="catppuccin-mocha" ;;
+    catppuccin-latte) zellij_theme="catppuccin-latte" ;;
+    *)                zellij_theme="dotfiles" ;;
+  esac
+
+  # Update theme name in config.kdl
+  _sed_i "s/^theme \"[^\"]*\"/theme \"$zellij_theme\"/" "$CONFIG_DIR/zellij/config.kdl"
+
+  # For custom themes generate dotfiles.kdl in new component format
+  if [[ "$zellij_theme" == "dotfiles" ]]; then
+    local BASE_R TEXT_R SURFACE0_R SURFACE1_R BLUE_R PINK_R GREEN_R YELLOW_R CYAN_R RED_R WHITE_R
+    BASE_R="$(_hex_to_rgb "$BASE")"
+    TEXT_R="$(_hex_to_rgb "$TEXT")"
+    SURFACE0_R="$(_hex_to_rgb "$SURFACE0")"
+    SURFACE1_R="$(_hex_to_rgb "$SURFACE1")"
+    BLUE_R="$(_hex_to_rgb "$BLUE")"
+    PINK_R="$(_hex_to_rgb "$PINK")"
+    GREEN_R="$(_hex_to_rgb "$GREEN")"
+    YELLOW_R="$(_hex_to_rgb "$YELLOW")"
+    CYAN_R="$(_hex_to_rgb "$CYAN")"
+    RED_R="$(_hex_to_rgb "$RED")"
+    WHITE_R="$(_hex_to_rgb "$WHITE")"
+
+    mkdir -p "$CONFIG_DIR/zellij/themes"
+    cat > "$CONFIG_DIR/zellij/themes/dotfiles.kdl" <<EOF
+themes {
+    dotfiles {
+        text_unselected {
+            base $TEXT_R
+            background $BASE_R
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $GREEN_R
+            emphasis_3 $PINK_R
+        }
+        text_selected {
+            base $TEXT_R
+            background $SURFACE1_R
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $GREEN_R
+            emphasis_3 $PINK_R
+        }
+        ribbon_selected {
+            base $BASE_R
+            background $GREEN_R
+            emphasis_0 $RED_R
+            emphasis_1 $YELLOW_R
+            emphasis_2 $PINK_R
+            emphasis_3 $BLUE_R
+        }
+        ribbon_unselected {
+            base $BASE_R
+            background $TEXT_R
+            emphasis_0 $RED_R
+            emphasis_1 $TEXT_R
+            emphasis_2 $BLUE_R
+            emphasis_3 $PINK_R
+        }
+        table_title {
+            base $GREEN_R
+            background 0
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $GREEN_R
+            emphasis_3 $PINK_R
+        }
+        table_cell_selected {
+            base $TEXT_R
+            background $SURFACE1_R
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $GREEN_R
+            emphasis_3 $PINK_R
+        }
+        table_cell_unselected {
+            base $TEXT_R
+            background $BASE_R
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $GREEN_R
+            emphasis_3 $PINK_R
+        }
+        list_selected {
+            base $TEXT_R
+            background $SURFACE1_R
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $GREEN_R
+            emphasis_3 $PINK_R
+        }
+        list_unselected {
+            base $TEXT_R
+            background $BASE_R
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $GREEN_R
+            emphasis_3 $PINK_R
+        }
+        frame_selected {
+            base $GREEN_R
+            background 0
+            emphasis_0 $YELLOW_R
+            emphasis_1 $CYAN_R
+            emphasis_2 $PINK_R
+            emphasis_3 0
+        }
+        frame_highlight {
+            base $YELLOW_R
+            background 0
+            emphasis_0 $RED_R
+            emphasis_1 $PINK_R
+            emphasis_2 $YELLOW_R
+            emphasis_3 $YELLOW_R
+        }
+        exit_code_success {
+            base $GREEN_R
+            background 0
+            emphasis_0 $CYAN_R
+            emphasis_1 $BASE_R
+            emphasis_2 $PINK_R
+            emphasis_3 $BLUE_R
+        }
+        exit_code_error {
+            base $RED_R
+            background 0
+            emphasis_0 $YELLOW_R
+            emphasis_1 0
+            emphasis_2 0
+            emphasis_3 0
+        }
+        multiplayer_user_colors {
+            player_1 $PINK_R
+            player_2 $BLUE_R
+            player_3 0
+            player_4 $YELLOW_R
+            player_5 $CYAN_R
+            player_6 0
+            player_7 $RED_R
+            player_8 0
+            player_9 0
+            player_10 0
+        }
+    }
+}
+EOF
+  fi
+}
+
+write_tmux_theme() {
+  cat > "$CONFIG_DIR/tmux/theme.conf" <<EOF
+# Pane borders
+set -g pane-border-style "fg=$SURFACE0"
+set -g pane-active-border-style "fg=$BLUE"
+
+# Messages
+set -g message-style "bg=$SURFACE0,fg=$TEXT"
+set -g message-command-style "bg=$SURFACE0,fg=$BLUE"
+
+# Status bar
+set -g status-style "bg=$BASE,fg=$TEXT"
+set -g status-position bottom
+set -g status-justify left
+set -g status-left-length 40
+set -g status-right-length 140
+
+# Left: session name
+set -g status-left "#[fg=$BASE,bg=$BLUE,bold] #S #[fg=$BLUE,bg=$BASE]"
+
+# Windows
+setw -g window-status-separator ""
+setw -g window-status-format "#[fg=$SUBTLE,bg=$BASE]  #W "
+setw -g window-status-current-format "#[fg=$BASE,bg=$PINK,bold]  #W #[fg=$PINK,bg=$BASE]"
+
+# Right: git branch | date | time
+set -g status-right "#[fg=$SURFACE1,bg=$BASE]#[fg=$SUBTLE,bg=$SURFACE1]  #(cd '#{pane_current_path}' 2>/dev/null && git branch --show-current 2>/dev/null) #[fg=$SURFACE0,bg=$SURFACE1]#[fg=$TEXT,bg=$SURFACE0]  %d.%m.%Y #[fg=$BLUE,bg=$SURFACE0]#[fg=$BASE,bg=$BLUE,bold]  %H:%M "
+EOF
+}
+
+write_lazygit_config() {
+  local flavor="${THEME_NAME#catppuccin-}"
+  local cache="$CATPPUCCIN_CACHE/lazygit-${flavor}.yml"
+
+  if [[ "$THEME_NAME" == catppuccin-* && -f "$cache" ]]; then
+    {
+      echo "gui:"
+      sed 's/^/  /' "$cache"
+      echo ""
+      cat "$CONFIG_DIR/lazygit/config.shared.yml"
+    } > "$CONFIG_DIR/lazygit/config.yml"
+    return
+  fi
+
+  cat > "$CONFIG_DIR/lazygit/config.yml" <<EOF
+gui:
+  theme:
+    activeBorderColor:
+      - "$BLUE"
+      - bold
+    inactiveBorderColor:
+      - "$SUBTLE"
+    searchingActiveBorderColor:
+      - "$YELLOW"
+      - bold
+    optionsTextColor:
+      - "$BLUE"
+    selectedLineBgColor:
+      - "$SURFACE0"
+    selectedRangeBgColor:
+      - "$SURFACE0"
+    cherryPickedCommitBgColor:
+      - "$SURFACE1"
+    cherryPickedCommitFgColor:
+      - "$BLUE"
+    unstagedChangesColor:
+      - "$RED"
+    defaultFgColor:
+      - "$TEXT"
+
+EOF
+  cat "$CONFIG_DIR/lazygit/config.shared.yml" >> "$CONFIG_DIR/lazygit/config.yml"
+}
+
+write_zsh_syntax_theme() {
+  local flavor="${THEME_NAME#catppuccin-}"
+  local cache="$CATPPUCCIN_CACHE/zsh-syntax-${flavor}.zsh"
+  local out="$CONFIG_DIR/zsh/shell/catppuccin-syntax.zsh"
+
+  if [[ "$THEME_NAME" == catppuccin-* && -f "$cache" ]]; then
+    cp "$cache" "$out"
+  else
+    # Fallback: empty file (no syntax colors override)
+    > "$out"
+  fi
+}
+
+write_fzf_theme() {
+  local flavor="${THEME_NAME#catppuccin-}"
+  local cache="$CATPPUCCIN_CACHE/fzf-${flavor}.sh"
+  local out="$CONFIG_DIR/zsh/shell/catppuccin-fzf.zsh"
+
+  if [[ "$THEME_NAME" == catppuccin-* && -f "$cache" ]]; then
+    cp "$cache" "$out"
+  else
+    > "$out"
+  fi
+}
+
+write_btop_theme() {
+  local btop_themes_dir="$HOME/.config/btop/themes"
+  local btop_conf="$HOME/.config/btop/btop.conf"
+  local flavor="${THEME_NAME#catppuccin-}"
+  local cache="$CATPPUCCIN_CACHE/btop-${flavor}.theme"
+  local theme_name
+
+  mkdir -p "$btop_themes_dir"
+
+  if [[ "$THEME_NAME" == catppuccin-* && -f "$cache" ]]; then
+    theme_name="catppuccin_${flavor}"
+    cp "$cache" "$btop_themes_dir/${theme_name}.theme"
+  else
+    theme_name="dotfiles"
+    cat > "$btop_themes_dir/dotfiles.theme" <<EOF
+theme[main_bg]="$BASE"
+theme[main_fg]="$TEXT"
+theme[title]="$TEXT"
+theme[hi_fg]="$BLUE"
+theme[selected_bg]="$SURFACE1"
+theme[selected_fg]="$BLUE"
+theme[inactive_fg]="$OVERLAY1"
+theme[graph_text]="$ROSEWATER"
+theme[meter_bg]="$SURFACE1"
+theme[proc_misc]="$ROSEWATER"
+theme[cpu_box]="$PINK"
+theme[mem_box]="$GREEN"
+theme[net_box]="$RED"
+theme[proc_box]="$BLUE"
+theme[div_line]="$SUBTLE"
+theme[temp_start]="$GREEN"
+theme[temp_mid]="$YELLOW"
+theme[temp_end]="$RED"
+theme[cpu_start]="$CYAN"
+theme[cpu_mid]="$BLUE"
+theme[cpu_end]="$LAVENDER"
+theme[free_start]="$PINK"
+theme[free_mid]="$LAVENDER"
+theme[free_end]="$BLUE"
+theme[cached_start]="$CYAN"
+theme[cached_mid]="$BLUE"
+theme[cached_end]="$LAVENDER"
+theme[available_start]="$YELLOW"
+theme[available_mid]="$PINK"
+theme[available_end]="$RED"
+theme[used_start]="$GREEN"
+theme[used_mid]="$CYAN"
+theme[used_end]="$CYAN"
+theme[download_start]="$YELLOW"
+theme[download_mid]="$PINK"
+theme[download_end]="$RED"
+theme[upload_start]="$GREEN"
+theme[upload_mid]="$CYAN"
+theme[upload_end]="$CYAN"
+theme[process_start]="$CYAN"
+theme[process_mid]="$LAVENDER"
+theme[process_end]="$PINK"
+EOF
+  fi
+
+  if [[ -f "$btop_conf" ]]; then
+    if grep -q "^color_theme" "$btop_conf"; then
+      _sed_i "s|^color_theme = .*|color_theme = \"${theme_name}\"|" "$btop_conf"
+    else
+      echo "color_theme = \"${theme_name}\"" >> "$btop_conf"
+    fi
+  fi
+}
+
+write_nvim_theme() {
+  cat > "$CONFIG_DIR/nvim/lua/config/theme.lua" <<EOF
+return {
+  name = "$THEME_NAME",
+  colorscheme = "$NVIM_COLORSCHEME",
+  flavour = "$NVIM_FLAVOUR",
+  background = "$NVIM_BACKGROUND",
+  color_overrides = {
+    all = {
+      base = "$BASE",
+      mantle = "$SURFACE0",
+      crust = "$SURFACE1",
+      text = "$TEXT",
+      blue = "$BLUE",
+      pink = "$PINK",
+      green = "$GREEN",
+      yellow = "$YELLOW",
+      red = "$RED",
+      teal = "$CYAN",
+      lavender = "$BLUE",
+    },
+  },
+  custom_highlights = {
+    CursorLine = { bg = "$SURFACE0" },
+    Visual = { bg = "$SURFACE1" },
+    Search = { bg = "$YELLOW", fg = "$BASE" },
+    IncSearch = { bg = "$PINK", fg = "$BASE" },
+    NormalFloat = { bg = "$SURFACE0" },
+    FloatBorder = { fg = "$BLUE", bg = "$SURFACE0" },
+    WinSeparator = { fg = "$SURFACE1" },
+    Pmenu = { bg = "$SURFACE0" },
+    PmenuSel = { bg = "$SURFACE1", fg = "$TEXT" },
+    NvimTreeNormal = { bg = "$BASE" },
+    NvimTreeNormalNC = { bg = "$BASE" },
+    NvimTreeEndOfBuffer = { bg = "$BASE" },
+    NvimTreeWinSeparator = { fg = "$SURFACE1", bg = "$BASE" },
+  },
+}
+EOF
+}
+
+apply_theme() {
+  local theme_name="$1"
+  load_theme "$theme_name"
+
+  write_alacritty_theme
+  write_kitty_theme
+  write_ghostty_theme
+  write_tmux_theme
+  write_zellij_theme
+  write_lazygit_config
+  write_nvim_theme
+  write_zsh_syntax_theme
+  write_fzf_theme
+  write_btop_theme
+
+  printf '%s\n' "$theme_name" > "$CURRENT_FILE"
+
+  # Alacritty: touch main config to trigger live reload
+  touch "$CONFIG_DIR/alacritty/alacritty.toml"
+  touch "$HOME/.config/alacritty/alacritty.toml" 2>/dev/null || true
+
+  # Kitty: signal all running instances to reload
+  kill -SIGUSR1 $(pgrep -x kitty) 2>/dev/null || true
+
+  # Ghostty: does not support live reload of config-file includes — reopen needed
+  # (main window colors reload on Cmd+Shift+, but palette requires restart)
+
+  # Tmux
+  tmux source-file "$HOME/.tmux.conf" 2>/dev/null || true
+
+  echo "Applied theme: $theme_name"
+  echo "Kitty reloaded automatically."
+  echo "Alacritty reloads automatically; if not, reopen the window."
+  echo "Ghostty requires restart for full palette reload."
+  echo "Restart Neovim sessions to pick up the new theme cleanly."
+  echo "Restart btop to pick up the new theme."
+}
+
+pick_theme() {
+  if ! command -v fzf >/dev/null 2>&1; then
+    echo "fzf not found — install it or use: theme apply <name>" >&2
+    exit 1
+  fi
+
+  local current=""
+  [[ -f "$CURRENT_FILE" ]] && current="$(cat "$CURRENT_FILE")"
+
+  # Put current theme first so fzf highlights it by default
+  local themes=()
+  [[ -n "$current" ]] && themes+=("$current")
+  while IFS= read -r t; do
+    [[ "$t" != "$current" ]] && themes+=("$t")
+  done < <(list_themes)
+
+  local selected
+  selected=$(printf '%s\n' "${themes[@]}" | fzf \
+    --prompt="  Theme: " \
+    --pointer="▶" \
+    --highlight-line \
+    --no-info \
+    --height=~10 \
+    --border=rounded \
+    --border-label=" Themes ")
+
+  [[ -z "$selected" ]] && exit 0
+  apply_theme "$selected"
+}
+
+case "${1:-}" in
+  "")
+    pick_theme
+    ;;
+  update)
+    update_catppuccin
+    ;;
+  list)
+    list_themes
+    ;;
+  current)
+    if [[ -f "$CURRENT_FILE" ]]; then
+      cat "$CURRENT_FILE"
+    else
+      echo "No current theme set"
+      exit 1
+    fi
+    ;;
+  apply)
+    if [[ "${2:-}" == "" ]]; then
+      usage
+      exit 1
+    fi
+    if [[ "$2" == "current" ]]; then
+      if [[ ! -f "$CURRENT_FILE" ]]; then
+        echo "No current theme set" >&2
+        exit 1
+      fi
+      apply_theme "$(cat "$CURRENT_FILE")"
+    else
+      apply_theme "$2"
+    fi
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

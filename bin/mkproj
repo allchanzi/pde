@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
+if [[ -f "$CONFIG_PREFS_HELPER" ]]; then
+  # shellcheck source=/dev/null
+  source "$CONFIG_PREFS_HELPER"
+  config_prefs_migrate
+  config_prefs_load
+fi
+
+usage() {
+  cat <<USAGE
+Usage:
+  mkproj <command-name> <project-dir> [options]
+
+Options:
+  --minimal       Generate: terminal, editor, ai, git
+  --full          Generate: terminal, editor, ai, git, docker, network, monitor
+  --no-ai         Omit AI window
+  --no-docker     Omit docker window
+  --base-branch   Branch to use as the base for new worktrees
+  --config        Optimized preset for config/dotfiles repo
+  -h, --help      Show this help
+
+Examples:
+  mkproj example-proj-name ~/git/example-proj-name --full
+  mkproj example-proj-name ~/git/example-proj-name --full --base-branch main
+  mkproj example-config-repo ~/git/example-config-repo --config
+  mkproj example-proj-name ~/git/example-proj-name --minimal --no-ai
+USAGE
+}
+
+if [[ $# -eq 1 && ( "$1" == "-h" || "$1" == "--help" ) ]]; then
+  usage; exit 0
+fi
+
+if [[ $# -lt 2 ]]; then
+  usage; exit 1
+fi
+
+COMMAND_NAME="$1"
+PROJECT_DIR_INPUT="$2"
+shift 2
+
+PROJECT_DIR="${PROJECT_DIR_INPUT/#\~/$HOME}"
+
+LAYOUT="minimal"
+WITH_AI=1
+WITH_DOCKER=1
+CONFIG_MODE=0
+BASE_BRANCH=""
+AI_PROFILE="${AI_PROFILE:-codex+claude}"
+AI_COMMAND_1="${AI_COMMAND_1:-codex}"
+AI_COMMAND_2="${AI_COMMAND_2:-claude}"
+
+if [[ "$AI_PROFILE" == "none" ]]; then
+  AI_COMMAND_1=""
+  AI_COMMAND_2=""
+fi
+
+escape_kdl() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --minimal)    LAYOUT="minimal"; shift ;;
+    --full)       LAYOUT="full"; shift ;;
+    --no-ai)      WITH_AI=0; shift ;;
+    --no-docker)  WITH_DOCKER=0; shift ;;
+    --base-branch) BASE_BRANCH="${2:-}"; shift 2 ;;
+    --config)     CONFIG_MODE=1; LAYOUT="minimal"; WITH_DOCKER=0; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "Unknown option: $1"; usage; exit 1 ;;
+  esac
+done
+
+TARGET="$HOME/bin/$COMMAND_NAME"
+ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/${COMMAND_NAME}.kdl"
+
+# ── Preflight checks ──────────────────────────────────────────────────────────
+
+mkdir -p "$HOME/bin"
+mkdir -p "$HOME/.config/zellij/layouts"
+
+WARNINGS=()
+
+if [[ ! -d "$PROJECT_DIR" ]]; then
+  WARNINGS+=("Project dir does not exist yet: $PROJECT_DIR")
+fi
+
+for tool in nvim lazygit; do
+  command -v "$tool" >/dev/null 2>&1 || WARNINGS+=("$tool not found — run: brew install $tool")
+done
+
+if ! command -v tmux >/dev/null 2>&1 && ! command -v zellij >/dev/null 2>&1; then
+  WARNINGS+=("No multiplexer found — run: brew install tmux  (or zellij)")
+fi
+
+if [[ "$WITH_AI" -eq 1 && -n "$AI_COMMAND_1" ]]; then
+  command -v "${AI_COMMAND_1%% *}" >/dev/null 2>&1 || WARNINGS+=("${AI_COMMAND_1%% *} not found — configure or install the selected AI command")
+fi
+if [[ "$WITH_AI" -eq 1 && -n "$AI_COMMAND_2" ]]; then
+  command -v "${AI_COMMAND_2%% *}" >/dev/null 2>&1 || WARNINGS+=("${AI_COMMAND_2%% *} not found — configure or install the selected AI command")
+fi
+
+if [[ "$LAYOUT" == "full" && "$WITH_DOCKER" -eq 1 ]]; then
+  command -v lazydocker >/dev/null 2>&1 || WARNINGS+=("lazydocker not found — run: brew install lazydocker")
+fi
+
+# ── Generate zellij layout ────────────────────────────────────────────────────
+
+generate_zellij_layout() {
+  local tabs=""
+
+  tabs+='    tab name="terminal" focus=true {\n        pane\n    }\n'
+  tabs+='    tab name="editor" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell nvim ."\n        }\n    }\n'
+
+  if [[ "$WITH_AI" -eq 1 && -n "$AI_COMMAND_1" ]]; then
+    if [[ -n "$AI_COMMAND_2" ]]; then
+      tabs+="    tab name=\"ai\" {\n        pane split_direction=\"vertical\" {\n            pane command=\"zsh\" {\n                args \"-lc\" \"run-and-return-to-shell $(escape_kdl "$AI_COMMAND_1")\"\n            }\n            pane command=\"zsh\" {\n                args \"-lc\" \"run-and-return-to-shell $(escape_kdl "$AI_COMMAND_2")\"\n            }\n        }\n    }\n"
+    else
+      tabs+="    tab name=\"ai\" {\n        pane command=\"zsh\" {\n            args \"-lc\" \"run-and-return-to-shell $(escape_kdl "$AI_COMMAND_1")\"\n        }\n    }\n"
+    fi
+  fi
+
+  tabs+='    tab name="git" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell lazygit"\n        }\n    }\n'
+
+  if [[ "$CONFIG_MODE" -eq 0 ]]; then
+    tabs+='    tab name="term2" {\n        pane\n    }\n'
+  fi
+
+  if [[ "$LAYOUT" == "full" && "$WITH_DOCKER" -eq 1 ]]; then
+    tabs+='    tab name="docker" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell lazydocker"\n        }\n    }\n'
+  fi
+
+  if [[ "$LAYOUT" == "full" ]]; then
+    tabs+='    tab name="network" {\n        pane split_direction="horizontal" {\n            pane command="zsh" {\n                args "-lc" "if command -v network-ports >/dev/null 2>&1; then run-and-return-to-shell network-ports; else run-and-return-to-shell bash -lc '\''while true; do clear; lsof -nP -iTCP; sleep 2; done'\''; fi"\n            }\n            pane split_direction="vertical" {\n                pane command="zsh" {\n                    args "-lc" "run-and-return-to-shell btop -p 1"\n                }\n                pane command="zsh" {\n                    args "-lc" "run-and-return-to-shell nload"\n                }\n            }\n        }\n    }\n'
+    tabs+='    tab name="monitor" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell btop -p 1"\n        }\n    }\n'
+  fi
+
+  mkdir -p "$(dirname "$ZELLIJ_LAYOUT")"
+  printf 'layout {\n    default_tab_template {\n        pane size=1 borderless=true {\n            plugin location="tab-bar"\n        }\n        children\n        pane size=1 borderless=true {\n            plugin location="status-bar"\n        }\n    }\n\n%b}\n' "$tabs" > "$ZELLIJ_LAYOUT"
+}
+
+# ── Generate launcher script ──────────────────────────────────────────────────
+
+cat > "$TARGET" <<SCRIPT
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION_BASE="$COMMAND_NAME"
+MAIN_PROJECT_DIR="$PROJECT_DIR"
+BASE_BRANCH="$BASE_BRANCH"
+
+BRANCH=""
+FORCE=0
+
+usage() {
+  echo "Usage:"
+  echo "  $COMMAND_NAME"
+  echo "  $COMMAND_NAME -b <branch>"
+  echo "  $COMMAND_NAME -b <branch> -f"
+}
+
+while [[ \$# -gt 0 ]]; do
+  case "\$1" in
+    -b|--branch)  BRANCH="\${2:-}"; shift 2 ;;
+    -f|--force)   FORCE=1; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "Unknown argument: \$1"; usage; exit 1 ;;
+  esac
+done
+
+PROJECT_DIR="\$MAIN_PROJECT_DIR"
+SESSION="\$SESSION_BASE"
+
+if [[ -n "\$BRANCH" ]]; then
+  cd "\$MAIN_PROJECT_DIR" || exit 1
+
+  EXISTING_PATH="\$(
+    git worktree list --porcelain | awk -v b="refs/heads/\$BRANCH" '
+      \$1=="worktree" { p=\$2 }
+      \$1=="branch" && \$2==b { print p }
+    '
+  )"
+
+  if [[ -n "\$EXISTING_PATH" && "\$FORCE" -eq 0 ]]; then
+    PROJECT_DIR="\$EXISTING_PATH"
+  else
+    if [[ -n "\$EXISTING_PATH" && "\$FORCE" -eq 1 ]]; then
+      echo "Removing existing worktree for '\$BRANCH' at \$EXISTING_PATH..."
+      git worktree remove --force "\$EXISTING_PATH" || true
+      rm -rf "\$EXISTING_PATH"
+    fi
+
+    REPO_NAME="\$(basename "\$MAIN_PROJECT_DIR")"
+    SAFE_BRANCH="\${BRANCH//\//-}"
+    WORKTREE_ROOT="\$(dirname "\$MAIN_PROJECT_DIR")"
+    WORKTREE_PATH="\$WORKTREE_ROOT/\${REPO_NAME}-\${SAFE_BRANCH}"
+
+    git fetch origin "\$BRANCH" --prune 2>/dev/null || true
+
+    if git show-ref --verify --quiet "refs/heads/\$BRANCH"; then
+      git worktree add "\$WORKTREE_PATH" "\$BRANCH"
+    elif git show-ref --verify --quiet "refs/remotes/origin/\$BRANCH"; then
+      git worktree add "\$WORKTREE_PATH" -b "\$BRANCH" "origin/\$BRANCH"
+    else
+      if [[ -n "\$BASE_BRANCH" ]]; then
+        git fetch origin "\$BASE_BRANCH" --prune 2>/dev/null || true
+        if git show-ref --verify --quiet "refs/remotes/origin/\$BASE_BRANCH"; then
+          git worktree add "\$WORKTREE_PATH" -b "\$BRANCH" "origin/\$BASE_BRANCH"
+        elif git show-ref --verify --quiet "refs/heads/\$BASE_BRANCH"; then
+          git worktree add "\$WORKTREE_PATH" -b "\$BRANCH" "\$BASE_BRANCH"
+        else
+          echo "Base branch '\$BASE_BRANCH' not found locally or on origin." >&2; exit 1
+        fi
+      else
+        git worktree add "\$WORKTREE_PATH" -b "\$BRANCH"
+      fi
+    fi
+
+    PROJECT_DIR="\$WORKTREE_PATH"
+  fi
+
+  SAFE_BRANCH="\${BRANCH//\//-}"
+  SESSION="\${SESSION_BASE}-\${SAFE_BRANCH}"
+fi
+
+cd "\$PROJECT_DIR" || exit 1
+
+# ── Multiplexer ───────────────────────────────────────────────────────────────
+
+CONFIG_PREFS_HELPER="\$HOME/bin/config-prefs"
+if [[ -f "\$CONFIG_PREFS_HELPER" ]]; then
+  # shellcheck source=/dev/null
+  source "\$CONFIG_PREFS_HELPER"
+  config_prefs_migrate
+  config_prefs_load
+fi
+
+MULTIPLEXER="\${MULTIPLEXER:-tmux}"
+AI_PROFILE="\${AI_PROFILE:-codex+claude}"
+AI_COMMAND_1="\${AI_COMMAND_1:-codex}"
+AI_COMMAND_2="\${AI_COMMAND_2:-claude}"
+
+if [[ "\$AI_PROFILE" == "none" ]]; then
+  AI_COMMAND_1=""
+  AI_COMMAND_2=""
+fi
+
+if [[ "\$MULTIPLEXER" == "zellij" ]]; then
+  ZELLIJ_LAYOUT="\$HOME/.config/zellij/layouts/${COMMAND_NAME}.kdl"
+  [[ -f "\$HOME/.config/zellij/layouts/${COMMAND_NAME}.local.kdl" ]] && ZELLIJ_LAYOUT="\$HOME/.config/zellij/layouts/${COMMAND_NAME}.local.kdl"
+  zellij attach "\$SESSION" 2>/dev/null || zellij -s "\$SESSION" -n "\$ZELLIJ_LAYOUT"
+  exit 0
+fi
+
+# ── tmux ──────────────────────────────────────────────────────────────────────
+
+if tmux has-session -t "\$SESSION" 2>/dev/null; then
+  tmux attach-session -t "\$SESSION"
+  exit 0
+fi
+
+TMUX_LAYOUT_LOCAL="\$HOME/.config/tmux/${COMMAND_NAME}.local.sh"
+if [[ -f "\$TMUX_LAYOUT_LOCAL" ]]; then
+  # shellcheck source=/dev/null
+  source "\$TMUX_LAYOUT_LOCAL"
+  if declare -F setup_tmux_layout >/dev/null 2>&1; then
+    setup_tmux_layout "\$SESSION" "\$PROJECT_DIR"
+    tmux attach-session -t "\$SESSION"
+    exit 0
+  fi
+fi
+
+WINDOW_INDEX=1
+tmux new-session -d -s "\$SESSION" -n terminal -c "\$PROJECT_DIR"
+WINDOW_INDEX=2
+
+tmux new-window -t "\$SESSION":2 -n editor -c "\$PROJECT_DIR"
+tmux send-keys -t "\$SESSION":2 "nvim ." C-m
+WINDOW_INDEX=3
+SCRIPT
+
+if [[ "$WITH_AI" -eq 1 ]]; then
+cat >> "$TARGET" <<'SCRIPT'
+if [[ -n "$AI_COMMAND_1" ]]; then
+  tmux new-window -t "$SESSION":$WINDOW_INDEX -n ai -c "$PROJECT_DIR"
+  tmux send-keys -t "$SESSION":$WINDOW_INDEX "$AI_COMMAND_1" C-m
+  if [[ -n "$AI_COMMAND_2" ]]; then
+    tmux split-window -h -t "$SESSION":$WINDOW_INDEX
+    tmux send-keys -t "$SESSION":$WINDOW_INDEX.2 "$AI_COMMAND_2" C-m
+  fi
+  WINDOW_INDEX=$((WINDOW_INDEX + 1))
+fi
+SCRIPT
+fi
+
+cat >> "$TARGET" <<'SCRIPT'
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n git -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":$WINDOW_INDEX "lazygit" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+SCRIPT
+
+if [[ "$CONFIG_MODE" -eq 0 ]]; then
+cat >> "$TARGET" <<'SCRIPT'
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n term2 -c "$PROJECT_DIR"
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+SCRIPT
+fi
+
+if [[ "$LAYOUT" == "full" && "$WITH_DOCKER" -eq 1 ]]; then
+cat >> "$TARGET" <<'SCRIPT'
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n docker -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":$WINDOW_INDEX "lazydocker" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+SCRIPT
+fi
+
+if [[ "$LAYOUT" == "full" ]]; then
+cat >> "$TARGET" <<'SCRIPT'
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n network -c "$PROJECT_DIR"
+tmux split-window -v -t "$SESSION":$WINDOW_INDEX
+tmux split-window -h -t "$SESSION":$WINDOW_INDEX.2
+tmux send-keys -t "$SESSION":$WINDOW_INDEX.1 "if command -v network-ports >/dev/null 2>&1; then network-ports; else while true; do clear; lsof -nP -iTCP; sleep 2; done; fi" C-m
+tmux send-keys -t "$SESSION":$WINDOW_INDEX.2 "btop -p 1" C-m
+tmux send-keys -t "$SESSION":$WINDOW_INDEX.3 "nload" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n monitor -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":$WINDOW_INDEX "btop -p 1" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+SCRIPT
+fi
+
+cat >> "$TARGET" <<'SCRIPT'
+tmux select-window -t "$SESSION":1
+tmux attach-session -t "$SESSION"
+SCRIPT
+
+chmod +x "$TARGET"
+generate_zellij_layout
+
+echo ""
+echo "  launcher  →  $TARGET"
+echo "  layout    →  $ZELLIJ_LAYOUT"
+echo "  project   →  $PROJECT_DIR"
+[[ -n "$BASE_BRANCH" ]] && echo "  base      →  $BASE_BRANCH"
+echo ""
+
+if [[ ${#WARNINGS[@]} -gt 0 ]]; then
+  echo "Warnings:"
+  for w in "${WARNINGS[@]}"; do
+    echo "  ! $w"
+  done
+  echo ""
+fi
+
+echo "Run:  $COMMAND_NAME"
+[[ -n "$BASE_BRANCH" ]] && echo "      $COMMAND_NAME -b <branch>"

@@ -1,0 +1,361 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+CONFIG_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+CONFIG_PREFS_HELPER="$CONFIG_DIR/bin/config-prefs"
+RESET_ONLY=0
+
+# shellcheck source=/dev/null
+source "$CONFIG_PREFS_HELPER"
+config_prefs_migrate
+config_prefs_load
+
+# Portable sed -i
+_sed_i() {
+  if [[ "$OSTYPE" == darwin* ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
+
+# ── Helpers ───────────────────────────────────────────────────
+
+pick_fzf() {
+  local prompt="$1"
+  local current="$2"
+  shift 2
+
+  # Put current selection first so fzf highlights it by default
+  local items=("$current")
+  for item in "$@"; do
+    [[ "$item" != "$current" ]] && items+=("$item")
+  done
+
+  printf '%s\n' "${items[@]}" | fzf \
+    --prompt="  $prompt: " \
+    --pointer="▶" \
+    --highlight-line \
+    --no-info \
+    --height=~10 \
+    --border=rounded
+}
+
+pick_multi_fzf() {
+  local prompt="$1"
+  shift
+
+  printf '%s\n' "$@" | fzf \
+    --multi \
+    --prompt="  $prompt: " \
+    --pointer="▶" \
+    --marker="✓" \
+    --highlight-line \
+    --no-info \
+    --height=~12 \
+    --border=rounded
+}
+
+escape_kdl() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
+current_pref() {
+  local key="$1"
+  local default="${2:-}"
+  config_prefs_get "$key" "$default"
+}
+
+save_pref() {
+  local key="$1"
+  local value="$2"
+  config_prefs_save "$key" "$value"
+}
+
+usage() {
+  echo "Usage:"
+  echo "  setup"
+  echo "  setup --reset"
+}
+
+reset_setup() {
+  local prefs_default="$CONFIG_PREFS_FILE_DEFAULT"
+  local prefs_legacy="$CONFIG_PREFS_FILE_LEGACY"
+  local zellij_dashboard_override="$HOME/.config/zellij/layouts/config.local.kdl"
+  local tmux_dashboard_override="$HOME/.config/tmux/config.local.sh"
+
+  [[ -f "$prefs_default" ]] && rm -f "$prefs_default"
+  [[ -f "$prefs_legacy" ]] && rm -f "$prefs_legacy"
+  [[ -f "$zellij_dashboard_override" ]] && rm -f "$zellij_dashboard_override"
+  [[ -f "$tmux_dashboard_override" ]] && rm -f "$tmux_dashboard_override"
+
+  echo ""
+  echo "✓ Setup reset to repo defaults."
+  echo ""
+  echo "Removed:"
+  echo "  $prefs_default"
+  echo "  $prefs_legacy"
+  echo "  $zellij_dashboard_override"
+  echo "  $tmux_dashboard_override"
+  echo ""
+  echo "Existing project launcher overrides such as ~/.config/zellij/layouts/<name>.local.kdl"
+  echo "or ~/.config/tmux/<name>.local.sh were left untouched."
+}
+
+write_dashboard_zellij_override() {
+  local layout_dir="$HOME/.config/zellij/layouts"
+  local layout_file="$layout_dir/config.local.kdl"
+  local cmd1="${AI_COMMAND_1:-codex}"
+  local cmd2="${AI_COMMAND_2:-claude}"
+  local ai_profile="${AI_PROFILE:-codex+claude}"
+  local cmd1_escaped
+  local cmd2_escaped
+
+  cmd1_escaped="$(escape_kdl "$cmd1")"
+  cmd2_escaped="$(escape_kdl "$cmd2")"
+
+  mkdir -p "$layout_dir"
+
+  {
+    echo "layout {"
+    echo '    default_tab_template {'
+    echo '        pane size=1 borderless=true {'
+    echo '            plugin location="tab-bar"'
+    echo '        }'
+    echo '        children'
+    echo '        pane size=1 borderless=true {'
+    echo '            plugin location="status-bar"'
+    echo '        }'
+    echo '    }'
+    echo
+    echo '    tab name="terminal" focus=true {'
+    echo '        pane'
+    echo '    }'
+    echo '    tab name="editor" {'
+    echo '        pane command="zsh" {'
+    echo '            args "-lc" "run-and-return-to-shell nvim ."'
+    echo '        }'
+    echo '    }'
+    if [[ "$ai_profile" != "none" && -n "$cmd1" ]]; then
+      echo '    tab name="ai" {'
+      if [[ -n "$cmd2" ]]; then
+        echo '        pane split_direction="vertical" {'
+        printf '            pane command="zsh" {\n                args "-lc" "run-and-return-to-shell %s"\n            }\n' "$cmd1_escaped"
+        printf '            pane command="zsh" {\n                args "-lc" "run-and-return-to-shell %s"\n            }\n' "$cmd2_escaped"
+        echo '        }'
+      else
+        printf '        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell %s"\n        }\n' "$cmd1_escaped"
+      fi
+      echo '    }'
+    fi
+    echo '    tab name="git" {'
+    echo '        pane command="zsh" {'
+    echo '            args "-lc" "run-and-return-to-shell lazygit"'
+    echo '        }'
+    echo '    }'
+    echo '}'
+  } > "$layout_file"
+}
+
+# ── Steps ─────────────────────────────────────────────────────
+
+step_install() {
+  echo ""
+  echo "Installing packages and symlinking configs..."
+  echo ""
+  "$CONFIG_DIR/bootstrap.sh"
+}
+
+step_multiplexer() {
+  echo ""
+  echo "Step 1/5 — Multiplexer"
+  local current
+  current="$(current_pref MULTIPLEXER tmux)"
+
+  local choice
+  choice=$(pick_fzf "Choose multiplexer" "$current" "tmux" "zellij") 2>/dev/null || {
+    echo "Skipped — keeping: $current"
+    return
+  }
+
+  save_pref MULTIPLEXER "$choice"
+  echo "✓ Multiplexer: $choice"
+}
+
+step_terminal() {
+  echo ""
+  echo "Step 2/5 — Terminal"
+  local current
+  current="$(current_pref TERMINAL kitty)"
+
+  local choice
+  choice=$(pick_fzf "Choose terminal" "$current" "kitty" "ghostty" "alacritty") 2>/dev/null || {
+    echo "Skipped — keeping: $current"
+    return
+  }
+
+  save_pref TERMINAL "$choice"
+  echo "✓ Terminal: $choice"
+}
+
+step_ai() {
+  echo ""
+  echo "Step 3/5 — AI"
+
+  local current="${AI_PROFILE:-}"
+  if [[ -z "$current" ]]; then
+    local cmd1 cmd2
+    cmd1="$(current_pref AI_COMMAND_1 "")"
+    cmd2="$(current_pref AI_COMMAND_2 "")"
+    if [[ -z "$cmd1" ]]; then
+      current="none"
+    elif [[ "$cmd1" == "codex" && "$cmd2" == "claude" ]]; then
+      current="codex+claude"
+    elif [[ "$cmd1" == "codex" && -z "$cmd2" ]]; then
+      current="codex"
+    elif [[ "$cmd1" == "claude" && -z "$cmd2" ]]; then
+      current="claude"
+    else
+      current="custom"
+    fi
+  fi
+
+  local choice
+  choice=$(pick_fzf "Choose AI setup" "$current" "codex+claude" "codex" "claude" "custom" "none") 2>/dev/null || {
+    echo "Skipped — keeping: $current"
+    return
+  }
+
+  case "$choice" in
+    codex+claude)
+      save_pref AI_PROFILE "codex+claude"
+      save_pref AI_COMMAND_1 "codex"
+      save_pref AI_COMMAND_2 "claude"
+      ;;
+    codex)
+      save_pref AI_PROFILE "codex"
+      save_pref AI_COMMAND_1 "codex"
+      save_pref AI_COMMAND_2 ""
+      ;;
+    claude)
+      save_pref AI_PROFILE "claude"
+      save_pref AI_COMMAND_1 "claude"
+      save_pref AI_COMMAND_2 ""
+      ;;
+    custom)
+      local custom_command
+      read -r -p "  AI command to run in the AI pane: " custom_command
+      if [[ -z "$custom_command" ]]; then
+        echo "Skipped custom AI command — keeping current setup."
+        return
+      fi
+      save_pref AI_PROFILE "custom"
+      save_pref AI_COMMAND_1 "$custom_command"
+      save_pref AI_COMMAND_2 ""
+      ;;
+    none)
+      save_pref AI_PROFILE "none"
+      save_pref AI_COMMAND_1 ""
+      save_pref AI_COMMAND_2 ""
+      ;;
+  esac
+
+  config_prefs_load
+  write_dashboard_zellij_override
+  echo "✓ AI setup: $choice"
+}
+
+step_features() {
+  echo ""
+  echo "Step 4/5 — Extra features"
+
+  local current="disabled"
+  if config_prefs_bool ENABLE_PANTS 0; then
+    current="enabled"
+  fi
+
+  local choice
+  choice=$(pick_fzf "Enable Pants support" "$current" "enabled" "disabled") 2>/dev/null || {
+    echo "Skipped — keeping Pants support: $current"
+    return
+  }
+
+  if [[ "$choice" == "enabled" ]]; then
+    save_pref ENABLE_PANTS "1"
+    echo "✓ Extra features: pants"
+  else
+    save_pref ENABLE_PANTS "0"
+    echo "✓ Extra features: none"
+  fi
+}
+
+step_theme() {
+  echo ""
+  echo "Step 5/5 — Theme"
+  "$CONFIG_DIR/bin/theme"
+}
+
+step_optional_install() {
+  echo ""
+  echo "Installing optional tools for selected AI/features..."
+  "$CONFIG_DIR/bin/install-optionals" || true
+}
+
+# ── Main ──────────────────────────────────────────────────────
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --reset)
+      RESET_ONLY=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$RESET_ONLY" -eq 1 ]]; then
+  reset_setup
+  exit 0
+fi
+
+echo ""
+echo "╭─────────────────────────────╮"
+echo "│     Config Setup Wizard     │"
+echo "╰─────────────────────────────╯"
+
+step_install
+step_multiplexer
+step_terminal
+step_ai
+step_features
+step_theme
+step_optional_install
+
+echo ""
+echo "✓ Setup complete! Restart your terminal."
+echo ""
+echo "Saved prefs: $CONFIG_PREFS_FILE_DEFAULT"
+if [[ -f "$CONFIG_PREFS_FILE_DEFAULT" ]]; then
+  cat "$CONFIG_PREFS_FILE_DEFAULT"
+fi

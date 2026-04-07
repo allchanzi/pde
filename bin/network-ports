@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INTERVAL=2
+ONCE=0
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  network-ports [--once] [--interval <seconds>]
+
+Options:
+  --once               Print one snapshot and exit
+  --interval <secs>    Refresh interval for watch mode (default: 2)
+  -h, --help           Show this help
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --once) ONCE=1; shift ;;
+    --interval) INTERVAL="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+if ! [[ "$INTERVAL" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "Invalid interval: $INTERVAL" >&2
+  exit 1
+fi
+
+render_listening() {
+  local out
+  out="$(lsof -nP -iTCP -sTCP:LISTEN -FpcLn 2>/dev/null || true)"
+
+  echo "=== LISTENING TCP PORTS ==="
+  if [[ -z "$out" ]]; then
+    echo "No listening TCP sockets."
+    return
+  fi
+
+  printf "%-8s %-8s %-22s %-12s %s\n" "PORT" "PID" "PROCESS" "USER" "BIND"
+  printf "%s\n" "$out" | awk '
+    BEGIN { OFS = "\t" }
+    /^p/ { pid = substr($0, 2); next }
+    /^c/ { command = substr($0, 2); next }
+    /^L/ { user = substr($0, 2); next }
+    /^n/ {
+      bind = substr($0, 2)
+      port = bind
+      sub(/^.*:/, "", port)
+      print port, pid, command, user, bind
+    }
+  ' | sort -t $'\t' -n -k1,1 -u | while IFS=$'\t' read -r port pid command user bind; do
+    printf "%-8s %-8s %-22s %-12s %s\n" "$port" "$pid" "$command" "$user" "$bind"
+  done
+}
+
+render_established() {
+  local out
+  out="$(lsof -nP -iTCP -sTCP:ESTABLISHED -FpcLn 2>/dev/null || true)"
+
+  echo "=== ESTABLISHED TCP CONNECTIONS ==="
+  if [[ -z "$out" ]]; then
+    echo "No established TCP connections."
+    return
+  fi
+
+  printf "%-8s %-22s %-12s %-30s %s\n" "PID" "PROCESS" "USER" "LOCAL" "REMOTE"
+  printf "%s\n" "$out" | awk '
+    BEGIN { OFS = "\t" }
+    /^p/ { pid = substr($0, 2); next }
+    /^c/ { command = substr($0, 2); next }
+    /^L/ { user = substr($0, 2); next }
+    /^n/ {
+      split(substr($0, 2), endpoints, "->")
+      print pid, command, user, endpoints[1], endpoints[2]
+    }
+  ' | while IFS=$'\t' read -r pid command user local_addr remote_addr; do
+    printf "%-8s %-22s %-12s %-30s %s\n" "$pid" "$command" "$user" "$local_addr" "$remote_addr"
+  done
+}
+
+render() {
+  if [[ "$ONCE" -eq 0 ]]; then
+    clear
+  fi
+  echo "Network snapshot: $(date '+%Y-%m-%d %H:%M:%S')"
+  echo
+  render_listening
+  echo
+  render_established
+}
+
+if [[ "$ONCE" -eq 1 ]]; then
+  render
+  exit 0
+fi
+
+while true; do
+  render
+  sleep "$INTERVAL"
+done

@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+CONFIG_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+
+CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
+if [[ -f "$CONFIG_PREFS_HELPER" ]]; then
+  # shellcheck source=/dev/null
+  source "$CONFIG_PREFS_HELPER"
+  config_prefs_migrate
+  config_prefs_load
+fi
+
+case "${1:-}" in
+  install)
+    shift
+    exec "$HOME/bin/setup" "$@"
+    ;;
+  theme)
+    shift
+    exec "$HOME/bin/theme" "$@"
+    ;;
+  dashboard)
+    shift
+    ;;
+esac
+
+SESSION_BASE="config"
+MAIN_PROJECT_DIR="$CONFIG_DIR"
+BASE_BRANCH=""
+
+BRANCH=""
+FORCE=0
+
+usage() {
+  echo "Usage:"
+  echo "  config"
+  echo "  config -b <branch>"
+  echo "  config -b <branch> -f"
+  echo "  config install"
+  echo "  config install --reset"
+  echo "  config theme"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -b|--branch)  BRANCH="${2:-}"; shift 2 ;;
+    -f|--force)   FORCE=1; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "Unknown argument: $1"; usage; exit 1 ;;
+  esac
+done
+
+PROJECT_DIR="$MAIN_PROJECT_DIR"
+SESSION="$SESSION_BASE"
+
+if [[ -n "$BRANCH" ]]; then
+  cd "$MAIN_PROJECT_DIR" || exit 1
+
+  EXISTING_PATH="$(
+    git worktree list --porcelain | awk -v b="refs/heads/$BRANCH" '
+      $1=="worktree" { p=$2 }
+      $1=="branch" && $2==b { print p }
+    '
+  )"
+
+  if [[ -n "$EXISTING_PATH" && "$FORCE" -eq 0 ]]; then
+    PROJECT_DIR="$EXISTING_PATH"
+  else
+    if [[ -n "$EXISTING_PATH" && "$FORCE" -eq 1 ]]; then
+      echo "Removing existing worktree for '$BRANCH' at $EXISTING_PATH..."
+      git worktree remove --force "$EXISTING_PATH" || true
+      rm -rf "$EXISTING_PATH"
+    fi
+
+    REPO_NAME="$(basename "$MAIN_PROJECT_DIR")"
+    SAFE_BRANCH="${BRANCH//\//-}"
+    WORKTREE_ROOT="$(dirname "$MAIN_PROJECT_DIR")"
+    WORKTREE_PATH="$WORKTREE_ROOT/${REPO_NAME}-${SAFE_BRANCH}"
+
+    git fetch origin "$BRANCH" --prune 2>/dev/null || true
+
+    if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+      git worktree add "$WORKTREE_PATH" "$BRANCH"
+    elif git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+      git worktree add "$WORKTREE_PATH" -b "$BRANCH" "origin/$BRANCH"
+    else
+      if [[ -n "$BASE_BRANCH" ]]; then
+        git fetch origin "$BASE_BRANCH" --prune 2>/dev/null || true
+        if git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
+          git worktree add "$WORKTREE_PATH" -b "$BRANCH" "origin/$BASE_BRANCH"
+        elif git show-ref --verify --quiet "refs/heads/$BASE_BRANCH"; then
+          git worktree add "$WORKTREE_PATH" -b "$BRANCH" "$BASE_BRANCH"
+        else
+          echo "Base branch '$BASE_BRANCH' not found locally or on origin." >&2; exit 1
+        fi
+      else
+        git worktree add "$WORKTREE_PATH" -b "$BRANCH"
+      fi
+    fi
+
+    PROJECT_DIR="$WORKTREE_PATH"
+  fi
+
+  SAFE_BRANCH="${BRANCH//\//-}"
+  SESSION="${SESSION_BASE}-${SAFE_BRANCH}"
+fi
+
+cd "$PROJECT_DIR" || exit 1
+
+# ── Multiplexer ───────────────────────────────────────────────────────────────
+
+MULTIPLEXER="${MULTIPLEXER:-tmux}"
+AI_PROFILE="${AI_PROFILE:-codex+claude}"
+AI_COMMAND_1="${AI_COMMAND_1:-codex}"
+AI_COMMAND_2="${AI_COMMAND_2:-claude}"
+
+if [[ "$AI_PROFILE" == "none" ]]; then
+  AI_COMMAND_1=""
+  AI_COMMAND_2=""
+fi
+
+if [[ "$MULTIPLEXER" == "zellij" ]]; then
+  ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.kdl"
+  [[ -f "$HOME/.config/zellij/layouts/config.local.kdl" ]] && ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.local.kdl"
+  zellij attach "$SESSION" 2>/dev/null || zellij -s "$SESSION" -n "$ZELLIJ_LAYOUT"
+  exit 0
+fi
+
+# ── tmux ──────────────────────────────────────────────────────────────────────
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  tmux attach-session -t "$SESSION"
+  exit 0
+fi
+
+TMUX_LAYOUT_LOCAL="$HOME/.config/tmux/config.local.sh"
+if [[ -f "$TMUX_LAYOUT_LOCAL" ]]; then
+  # shellcheck source=/dev/null
+  source "$TMUX_LAYOUT_LOCAL"
+  if declare -F setup_tmux_layout >/dev/null 2>&1; then
+    setup_tmux_layout "$SESSION" "$PROJECT_DIR"
+    tmux attach-session -t "$SESSION"
+    exit 0
+  fi
+fi
+
+WINDOW_INDEX=1
+tmux new-session -d -s "$SESSION" -n terminal -c "$PROJECT_DIR"
+WINDOW_INDEX=2
+
+tmux new-window -t "$SESSION":2 -n editor -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":2 "nvim ." C-m
+WINDOW_INDEX=3
+if [[ -n "$AI_COMMAND_1" ]]; then
+  tmux new-window -t "$SESSION":$WINDOW_INDEX -n ai -c "$PROJECT_DIR"
+  tmux send-keys -t "$SESSION":$WINDOW_INDEX "$AI_COMMAND_1" C-m
+  if [[ -n "$AI_COMMAND_2" ]]; then
+    tmux split-window -h -t "$SESSION":$WINDOW_INDEX
+    tmux send-keys -t "$SESSION":$WINDOW_INDEX.2 "$AI_COMMAND_2" C-m
+  fi
+  WINDOW_INDEX=$((WINDOW_INDEX + 1))
+fi
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n git -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":$WINDOW_INDEX "lazygit" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+tmux select-window -t "$SESSION":1
+tmux attach-session -t "$SESSION"
