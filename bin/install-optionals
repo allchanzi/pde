@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+CONFIG_PREFS_HELPER="$BIN_DIR/config-prefs"
 if [[ ! -f "$CONFIG_PREFS_HELPER" ]]; then
   echo "config-prefs helper not found at $CONFIG_PREFS_HELPER" >&2
   exit 0

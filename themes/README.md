@@ -9,6 +9,12 @@ theme list
 theme current
 theme apply catppuccin-mocha
 theme apply catppuccin-latte
+theme apply dracula
+theme apply nord
+theme apply solarized-dark
+theme apply solarized-light
+theme apply tokyonight-night
+theme apply synthwave-84
 theme apply neon-cyberpunk
 ```
 

@@ -27,6 +27,22 @@ _sed_i() {
   fi
 }
 
+_resolve_path() {
+  local path="$1"
+
+  while [[ -L "$path" ]]; do
+    local link_target
+    link_target="$(readlink "$path")"
+    if [[ "$link_target" == /* ]]; then
+      path="$link_target"
+    else
+      path="$(cd "$(dirname "$path")" && pwd)/$link_target"
+    fi
+  done
+
+  printf '%s\n' "$path"
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -593,7 +609,8 @@ theme[process_end]="$PINK"
 EOF
   fi
 
-  if [[ -f "$btop_conf" ]]; then
+  if [[ -f "$btop_conf" || -L "$btop_conf" ]]; then
+    btop_conf="$(_resolve_path "$btop_conf")"
     if grep -q "^color_theme" "$btop_conf"; then
       _sed_i "s|^color_theme = .*|color_theme = \"${theme_name}\"|" "$btop_conf"
     else
@@ -609,6 +626,26 @@ return {
   colorscheme = "$NVIM_COLORSCHEME",
   flavour = "$NVIM_FLAVOUR",
   background = "$NVIM_BACKGROUND",
+  palette = {
+    base = "$BASE",
+    text = "$TEXT",
+    subtle = "$SUBTLE",
+    surface0 = "$SURFACE0",
+    surface1 = "$SURFACE1",
+    surface2 = "$SURFACE2",
+    subtext0 = "$SUBTEXT0",
+    subtext1 = "$SUBTEXT1",
+    overlay1 = "$OVERLAY1",
+    rosewater = "$ROSEWATER",
+    lavender = "$LAVENDER",
+    blue = "$BLUE",
+    pink = "$PINK",
+    green = "$GREEN",
+    yellow = "$YELLOW",
+    cyan = "$CYAN",
+    red = "$RED",
+    white = "$WHITE",
+  },
   color_overrides = {
     all = {
       base = "$BASE",
@@ -677,6 +714,7 @@ apply_theme() {
   echo "Kitty reloaded automatically."
   echo "Alacritty reloads automatically; if not, reopen the window."
   echo "Ghostty requires restart for full palette reload."
+  echo "Zellij picks up theme changes after detach/reattach or a fresh session start."
   echo "Restart Neovim sessions to pick up the new theme cleanly."
   echo "Restart btop to pick up the new theme."
 }

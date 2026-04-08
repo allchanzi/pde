@@ -73,6 +73,11 @@ escape_kdl() {
   printf '%s' "$value"
 }
 
+wrap_shell_command() {
+  local value="$1"
+  printf '%s; exec "$SHELL" -l' "$value"
+}
+
 current_pref() {
   local key="$1"
   local default="${2:-}"
@@ -124,8 +129,8 @@ write_dashboard_zellij_override() {
   local cmd1_escaped
   local cmd2_escaped
 
-  cmd1_escaped="$(escape_kdl "$cmd1")"
-  cmd2_escaped="$(escape_kdl "$cmd2")"
+  cmd1_escaped="$(escape_kdl "$(wrap_shell_command "$cmd1")")"
+  cmd2_escaped="$(escape_kdl "$(wrap_shell_command "$cmd2")")"
 
   mkdir -p "$layout_dir"
 
@@ -146,24 +151,24 @@ write_dashboard_zellij_override() {
     echo '    }'
     echo '    tab name="editor" {'
     echo '        pane command="zsh" {'
-    echo '            args "-lc" "run-and-return-to-shell nvim ."'
+    echo '            args "-lc" "nvim .; exec \"$SHELL\" -l"'
     echo '        }'
     echo '    }'
     if [[ "$ai_profile" != "none" && -n "$cmd1" ]]; then
       echo '    tab name="ai" {'
       if [[ -n "$cmd2" ]]; then
         echo '        pane split_direction="vertical" {'
-        printf '            pane command="zsh" {\n                args "-lc" "run-and-return-to-shell %s"\n            }\n' "$cmd1_escaped"
-        printf '            pane command="zsh" {\n                args "-lc" "run-and-return-to-shell %s"\n            }\n' "$cmd2_escaped"
+        printf '            pane command="zsh" {\n                args "-lc" "%s"\n            }\n' "$cmd1_escaped"
+        printf '            pane command="zsh" {\n                args "-lc" "%s"\n            }\n' "$cmd2_escaped"
         echo '        }'
       else
-        printf '        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell %s"\n        }\n' "$cmd1_escaped"
+        printf '        pane command="zsh" {\n            args "-lc" "%s"\n        }\n' "$cmd1_escaped"
       fi
       echo '    }'
     fi
     echo '    tab name="git" {'
     echo '        pane command="zsh" {'
-    echo '            args "-lc" "run-and-return-to-shell lazygit"'
+    echo '            args "-lc" "lazygit; exec \"$SHELL\" -l"'
     echo '        }'
     echo '    }'
     echo '}'

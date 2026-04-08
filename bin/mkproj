@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+CONFIG_PREFS_HELPER="$BIN_DIR/config-prefs"
 if [[ -f "$CONFIG_PREFS_HELPER" ]]; then
   # shellcheck source=/dev/null
   source "$CONFIG_PREFS_HELPER"
@@ -43,8 +55,6 @@ COMMAND_NAME="$1"
 PROJECT_DIR_INPUT="$2"
 shift 2
 
-PROJECT_DIR="${PROJECT_DIR_INPUT/#\~/$HOME}"
-
 LAYOUT="minimal"
 WITH_AI=1
 WITH_DOCKER=1
@@ -66,6 +76,43 @@ escape_kdl() {
   printf '%s' "$value"
 }
 
+wrap_shell_command() {
+  local value="$1"
+  printf '%s; exec "$SHELL" -l' "$value"
+}
+
+resolve_project_dir() {
+  local input="$1"
+  local expanded="${input/#\~/$HOME}"
+  local parent
+  local base
+
+  if [[ -d "$expanded" ]]; then
+    (cd "$expanded" && pwd -P)
+    return 0
+  fi
+
+  parent="$(dirname "$expanded")"
+  base="$(basename "$expanded")"
+
+  if [[ "$expanded" == /* ]]; then
+    if [[ -d "$parent" ]]; then
+      printf '%s/%s\n' "$(cd "$parent" && pwd -P)" "$base"
+    else
+      printf '%s\n' "$expanded"
+    fi
+    return 0
+  fi
+
+  if [[ "$parent" == "." ]]; then
+    printf '%s/%s\n' "$(pwd -P)" "$base"
+  elif [[ -d "$parent" ]]; then
+    printf '%s/%s\n' "$(cd "$parent" && pwd -P)" "$base"
+  else
+    printf '%s/%s\n' "$(pwd -P)" "$expanded"
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --minimal)    LAYOUT="minimal"; shift ;;
@@ -78,6 +125,8 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1"; usage; exit 1 ;;
   esac
 done
+
+PROJECT_DIR="$(resolve_project_dir "$PROJECT_DIR_INPUT")"
 
 TARGET="$HOME/bin/$COMMAND_NAME"
 ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/${COMMAND_NAME}.kdl"
@@ -118,29 +167,29 @@ generate_zellij_layout() {
   local tabs=""
 
   tabs+='    tab name="terminal" focus=true {\n        pane\n    }\n'
-  tabs+='    tab name="editor" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell nvim ."\n        }\n    }\n'
+  tabs+='    tab name="editor" {\n        pane command="zsh" {\n            args "-lc" "nvim .; exec \"$SHELL\" -l"\n        }\n    }\n'
 
   if [[ "$WITH_AI" -eq 1 && -n "$AI_COMMAND_1" ]]; then
     if [[ -n "$AI_COMMAND_2" ]]; then
-      tabs+="    tab name=\"ai\" {\n        pane split_direction=\"vertical\" {\n            pane command=\"zsh\" {\n                args \"-lc\" \"run-and-return-to-shell $(escape_kdl "$AI_COMMAND_1")\"\n            }\n            pane command=\"zsh\" {\n                args \"-lc\" \"run-and-return-to-shell $(escape_kdl "$AI_COMMAND_2")\"\n            }\n        }\n    }\n"
+      tabs+="    tab name=\"ai\" {\n        pane split_direction=\"vertical\" {\n            pane command=\"zsh\" {\n                args \"-lc\" \"$(escape_kdl "$(wrap_shell_command "$AI_COMMAND_1")")\"\n            }\n            pane command=\"zsh\" {\n                args \"-lc\" \"$(escape_kdl "$(wrap_shell_command "$AI_COMMAND_2")")\"\n            }\n        }\n    }\n"
     else
-      tabs+="    tab name=\"ai\" {\n        pane command=\"zsh\" {\n            args \"-lc\" \"run-and-return-to-shell $(escape_kdl "$AI_COMMAND_1")\"\n        }\n    }\n"
+      tabs+="    tab name=\"ai\" {\n        pane command=\"zsh\" {\n            args \"-lc\" \"$(escape_kdl "$(wrap_shell_command "$AI_COMMAND_1")")\"\n        }\n    }\n"
     fi
   fi
 
-  tabs+='    tab name="git" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell lazygit"\n        }\n    }\n'
+  tabs+='    tab name="git" {\n        pane command="zsh" {\n            args "-lc" "lazygit; exec \"$SHELL\" -l"\n        }\n    }\n'
 
   if [[ "$CONFIG_MODE" -eq 0 ]]; then
     tabs+='    tab name="term2" {\n        pane\n    }\n'
   fi
 
   if [[ "$LAYOUT" == "full" && "$WITH_DOCKER" -eq 1 ]]; then
-    tabs+='    tab name="docker" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell lazydocker"\n        }\n    }\n'
+    tabs+='    tab name="docker" {\n        pane command="zsh" {\n            args "-lc" "lazydocker; exec \"$SHELL\" -l"\n        }\n    }\n'
   fi
 
   if [[ "$LAYOUT" == "full" ]]; then
-    tabs+='    tab name="network" {\n        pane split_direction="horizontal" {\n            pane command="zsh" {\n                args "-lc" "if command -v network-ports >/dev/null 2>&1; then run-and-return-to-shell network-ports; else run-and-return-to-shell bash -lc '\''while true; do clear; lsof -nP -iTCP; sleep 2; done'\''; fi"\n            }\n            pane split_direction="vertical" {\n                pane command="zsh" {\n                    args "-lc" "run-and-return-to-shell btop -p 1"\n                }\n                pane command="zsh" {\n                    args "-lc" "run-and-return-to-shell nload"\n                }\n            }\n        }\n    }\n'
-    tabs+='    tab name="monitor" {\n        pane command="zsh" {\n            args "-lc" "run-and-return-to-shell btop -p 1"\n        }\n    }\n'
+    tabs+='    tab name="network" {\n        pane split_direction="horizontal" {\n            pane command="zsh" {\n                args "-lc" "if command -v network-ports >/dev/null 2>&1; then network-ports; else bash -lc '\''while true; do clear; lsof -nP -iTCP; sleep 2; done'\''; fi; exec \"$SHELL\" -l"\n            }\n            pane split_direction="vertical" {\n                pane command="zsh" {\n                    args "-lc" "btop -p 1; exec \"$SHELL\" -l"\n                }\n                pane command="zsh" {\n                    args "-lc" "nload; exec \"$SHELL\" -l"\n                }\n            }\n        }\n    }\n'
+    tabs+='    tab name="monitor" {\n        pane command="zsh" {\n            args "-lc" "btop -p 1; exec \"$SHELL\" -l"\n        }\n    }\n'
   fi
 
   mkdir -p "$(dirname "$ZELLIJ_LAYOUT")"
@@ -235,7 +284,10 @@ cd "\$PROJECT_DIR" || exit 1
 
 # ── Multiplexer ───────────────────────────────────────────────────────────────
 
-CONFIG_PREFS_HELPER="\$HOME/bin/config-prefs"
+CONFIG_PREFS_HELPER="\$(dirname "\$0")/config-prefs"
+if [[ ! -f "\$CONFIG_PREFS_HELPER" && -f "\$HOME/bin/config-prefs" ]]; then
+  CONFIG_PREFS_HELPER="\$HOME/bin/config-prefs"
+fi
 if [[ -f "\$CONFIG_PREFS_HELPER" ]]; then
   # shellcheck source=/dev/null
   source "\$CONFIG_PREFS_HELPER"
@@ -256,7 +308,11 @@ fi
 if [[ "\$MULTIPLEXER" == "zellij" ]]; then
   ZELLIJ_LAYOUT="\$HOME/.config/zellij/layouts/${COMMAND_NAME}.kdl"
   [[ -f "\$HOME/.config/zellij/layouts/${COMMAND_NAME}.local.kdl" ]] && ZELLIJ_LAYOUT="\$HOME/.config/zellij/layouts/${COMMAND_NAME}.local.kdl"
-  zellij attach "\$SESSION" 2>/dev/null || zellij -s "\$SESSION" -n "\$ZELLIJ_LAYOUT"
+  if zellij list-sessions 2>/dev/null | awk '{print \$1}' | grep -Fxq "\$SESSION"; then
+    exec zellij attach "\$SESSION"
+  else
+    exec zellij -s "\$SESSION" -n "\$ZELLIJ_LAYOUT"
+  fi
   exit 0
 fi
 

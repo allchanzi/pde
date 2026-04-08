@@ -11,32 +11,9 @@ while [[ -L "$SCRIPT_PATH" ]]; do
     SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
   fi
 done
-CONFIG_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
-
-CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
-if [[ -f "$CONFIG_PREFS_HELPER" ]]; then
-  # shellcheck source=/dev/null
-  source "$CONFIG_PREFS_HELPER"
-  config_prefs_migrate
-  config_prefs_load
-fi
-
-case "${1:-}" in
-  install)
-    shift
-    exec "$HOME/bin/setup" "$@"
-    ;;
-  theme)
-    shift
-    exec "$HOME/bin/theme" "$@"
-    ;;
-  dashboard)
-    shift
-    ;;
-esac
+MAIN_PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 
 SESSION_BASE="config"
-MAIN_PROJECT_DIR="$CONFIG_DIR"
 BASE_BRANCH=""
 
 BRANCH=""
@@ -45,12 +22,27 @@ FORCE=0
 usage() {
   echo "Usage:"
   echo "  config"
+  echo "  config dashboard"
   echo "  config -b <branch>"
   echo "  config -b <branch> -f"
   echo "  config install"
   echo "  config install --reset"
   echo "  config theme"
 }
+
+case "${1:-}" in
+  dashboard)
+    shift
+    ;;
+  install)
+    shift
+    exec "$HOME/bin/setup" "$@"
+    ;;
+  theme)
+    shift
+    exec "$HOME/bin/theme" "$@"
+    ;;
+esac
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -120,6 +112,17 @@ cd "$PROJECT_DIR" || exit 1
 
 # ── Multiplexer ───────────────────────────────────────────────────────────────
 
+CONFIG_PREFS_HELPER="$(dirname "$0")/config-prefs"
+if [[ ! -f "$CONFIG_PREFS_HELPER" && -f "$HOME/bin/config-prefs" ]]; then
+  CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
+fi
+if [[ -f "$CONFIG_PREFS_HELPER" ]]; then
+  # shellcheck source=/dev/null
+  source "$CONFIG_PREFS_HELPER"
+  config_prefs_migrate
+  config_prefs_load
+fi
+
 MULTIPLEXER="${MULTIPLEXER:-tmux}"
 AI_PROFILE="${AI_PROFILE:-codex+claude}"
 AI_COMMAND_1="${AI_COMMAND_1:-codex}"
@@ -133,7 +136,11 @@ fi
 if [[ "$MULTIPLEXER" == "zellij" ]]; then
   ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.kdl"
   [[ -f "$HOME/.config/zellij/layouts/config.local.kdl" ]] && ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.local.kdl"
-  zellij attach "$SESSION" 2>/dev/null || zellij -s "$SESSION" -n "$ZELLIJ_LAYOUT"
+  if zellij list-sessions 2>/dev/null | awk '{print $1}' | grep -Fxq "$SESSION"; then
+    exec zellij attach "$SESSION"
+  else
+    exec zellij -s "$SESSION" -n "$ZELLIJ_LAYOUT"
+  fi
   exit 0
 fi
 

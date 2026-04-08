@@ -53,11 +53,12 @@ return {
     dependencies = { "nvim-tree/nvim-web-devicons" },
     event = "VeryLazy",
     config = function()
-      local c = require("config.theme").color_overrides.all
-      local base   = c.base   -- #1e1e2e — nvim background
-      local active = c.crust  -- #45475a — lighter than NvimTree active
-      local subtle = "#6c7086"
-      local text   = c.text   -- #cdd6f4
+      local theme = require("config.theme")
+      local p = theme.palette
+      local base = p.base
+      local active = p.surface1
+      local subtle = p.subtle
+      local text = p.text
 
       require("bufferline").setup({
         highlights = {
@@ -115,6 +116,10 @@ return {
     config = function()
       local theme = require("config.theme")
 
+      if theme.colorscheme ~= "catppuccin" then
+        return
+      end
+
       require("catppuccin").setup({
         flavour = theme.flavour,
         term_colors = true,
@@ -134,6 +139,125 @@ return {
 
       vim.o.background = theme.background
       vim.cmd.colorscheme(theme.colorscheme)
+    end,
+  },
+
+  {
+    "folke/tokyonight.nvim",
+    name = "tokyonight",
+    priority = 1000,
+    config = function()
+      local theme = require("config.theme")
+
+      if theme.colorscheme ~= "tokyonight" then
+        return
+      end
+
+      local p = theme.palette
+
+      require("tokyonight").setup({
+        style = theme.flavour ~= "" and theme.flavour or "night",
+        transparent = false,
+        terminal_colors = true,
+        styles = {
+          comments = { italic = true },
+          sidebars = "dark",
+          floats = "dark",
+        },
+        on_colors = function(colors)
+          colors.bg = p.base
+          colors.bg_dark = p.surface0
+          colors.bg_float = p.surface0
+          colors.bg_highlight = p.surface1
+          colors.bg_popup = p.surface0
+          colors.bg_sidebar = p.surface0
+          colors.bg_statusline = p.base
+          colors.fg = p.text
+          colors.fg_dark = p.subtext0
+          colors.fg_float = p.text
+          colors.fg_gutter = p.subtle
+          colors.comment = p.subtle
+          colors.blue = p.blue
+          colors.magenta = p.pink
+          colors.purple = p.lavender
+          colors.green = p.green
+          colors.yellow = p.yellow
+          colors.cyan = p.cyan
+          colors.red = p.red
+          colors.orange = p.rosewater
+          colors.border = p.surface1
+        end,
+        on_highlights = function(highlights)
+          for group, spec in pairs(theme.custom_highlights or {}) do
+            highlights[group] = spec
+          end
+        end,
+      })
+
+      vim.o.background = theme.background
+      vim.cmd.colorscheme(theme.colorscheme)
+    end,
+  },
+
+  {
+    "Mofiqul/dracula.nvim",
+    name = "dracula",
+    priority = 1000,
+    config = function()
+      local theme = require("config.theme")
+
+      if theme.colorscheme ~= "dracula" then
+        return
+      end
+
+      require("dracula").setup({
+        transparent_bg = false,
+        italic_comment = true,
+        overrides = theme.custom_highlights or {},
+      })
+
+      vim.o.background = theme.background
+      vim.cmd.colorscheme(theme.colorscheme)
+    end,
+  },
+
+  {
+    "shaunsingh/nord.nvim",
+    name = "nord",
+    priority = 1000,
+    config = function()
+      local theme = require("config.theme")
+
+      if theme.colorscheme ~= "nord" then
+        return
+      end
+
+      vim.o.background = theme.background
+      vim.cmd.colorscheme(theme.colorscheme)
+
+      for group, spec in pairs(theme.custom_highlights or {}) do
+        vim.api.nvim_set_hl(0, group, spec)
+      end
+    end,
+  },
+
+  {
+    "altercation/vim-colors-solarized",
+    name = "solarized",
+    priority = 1000,
+    config = function()
+      local theme = require("config.theme")
+
+      if theme.colorscheme ~= "solarized" then
+        return
+      end
+
+      vim.o.background = theme.background
+      vim.cmd.colorscheme(theme.colorscheme)
+
+      for group, spec in pairs(theme.custom_highlights or {}) do
+        vim.api.nvim_set_hl(0, group, spec)
+      end
     end,
   },
 }

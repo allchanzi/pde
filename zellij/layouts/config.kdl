@@ -14,22 +14,22 @@ layout {
     }
     tab name="editor" {
         pane command="zsh" {
-            args "-lc" "run-and-return-to-shell nvim ."
+            args "-lc" "nvim .; exec \"$SHELL\" -l"
         }
     }
     tab name="ai" {
         pane split_direction="vertical" {
             pane command="zsh" {
-                args "-lc" "run-and-return-to-shell codex"
+                args "-lc" "codex; exec \"$SHELL\" -l"
             }
             pane command="zsh" {
-                args "-lc" "run-and-return-to-shell claude"
+                args "-lc" "claude; exec \"$SHELL\" -l"
             }
         }
     }
     tab name="git" {
         pane command="zsh" {
-            args "-lc" "run-and-return-to-shell lazygit"
+            args "-lc" "lazygit; exec \"$SHELL\" -l"
         }
     }
 }

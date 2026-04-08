@@ -6,6 +6,25 @@ echo "🚀 Starting setup..."
 CONFIG_DIR="$(cd "$(dirname "$0")" && pwd)"
 OS="$(uname -s)"
 
+detect_brew_bin() {
+  if command -v brew >/dev/null 2>&1; then
+    command -v brew
+    return 0
+  fi
+
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    echo /opt/homebrew/bin/brew
+  elif [[ -x /usr/local/bin/brew ]]; then
+    echo /usr/local/bin/brew
+  elif [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+    echo /home/linuxbrew/.linuxbrew/bin/brew
+  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
+    echo "$HOME/.linuxbrew/bin/brew"
+  else
+    return 1
+  fi
+}
+
 ########################################
 # Install Homebrew if missing
 ########################################
@@ -21,28 +40,17 @@ fi
 # Load brew into current shell
 ########################################
 
-if [[ "$OS" == "Darwin" ]]; then
-  if [[ -x /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  elif [[ -x /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
-  else
-    echo "❌ brew installed but not found in expected macOS locations"
-    exit 1
-  fi
-elif [[ "$OS" == "Linux" ]]; then
-  if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
-    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
-  else
-    echo "❌ brew installed but not found in expected Linux locations"
-    exit 1
-  fi
-else
+if [[ "$OS" != "Darwin" && "$OS" != "Linux" ]]; then
   echo "❌ Unsupported OS: $OS"
   exit 1
 fi
+
+BREW_BIN="$(detect_brew_bin)" || {
+  echo "❌ brew installed but not found in expected locations"
+  exit 1
+}
+
+eval "$("$BREW_BIN" shellenv)"
 
 echo "🍺 Using brew: $(command -v brew)"
 
@@ -197,15 +205,7 @@ fi
 
 ZPROFILE="$HOME/.zprofile"
 
-if [[ "$OS" == "Darwin" ]]; then
-  BREW_SHELLENV_LINE='eval "$(/opt/homebrew/bin/brew shellenv)"'
-else
-  if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
-    BREW_SHELLENV_LINE='eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"'
-  else
-    BREW_SHELLENV_LINE='eval "$($HOME/.linuxbrew/bin/brew shellenv)"'
-  fi
-fi
+printf -v BREW_SHELLENV_LINE 'eval "$(%q shellenv)"' "$BREW_BIN"
 
 if [[ ! -f "$ZPROFILE" ]] || ! grep -Fq "$BREW_SHELLENV_LINE" "$ZPROFILE"; then
   echo "📝 Adding brew shellenv to $ZPROFILE"
