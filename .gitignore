@@ -29,5 +29,9 @@ nvim.log
 nvim/.nvimlog
 nvim/.tmp-nvim-state/
 
+# k9s runtime state (logs and per-cluster config are machine-specific)
+k9s/k9s.log
+k9s/clusters/
+
 # macOS
 .DS_Store

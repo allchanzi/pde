@@ -619,6 +619,75 @@ EOF
   fi
 }
 
+write_k9s_theme() {
+  mkdir -p "$CONFIG_DIR/k9s/skins"
+
+  cat > "$CONFIG_DIR/k9s/skins/dotfiles.yaml" <<EOF
+k9s:
+  body:
+    fgColor: "$TEXT"
+    bgColor: "$BASE"
+    logoColor: "$BLUE"
+  info:
+    fgColor: "$TEXT"
+    sectionColor: "$BLUE"
+  help:
+    fgColor: "$TEXT"
+    bgColor: "$SURFACE0"
+    keyColor: "$BLUE"
+    numKeyColor: "$YELLOW"
+    sectionColor: "$SUBTLE"
+  frame:
+    border:
+      fgColor: "$SURFACE0"
+      focusColor: "$BLUE"
+    menu:
+      fgColor: "$TEXT"
+      fgStyle: dim
+      keyColor: "$BLUE"
+      numKeyColor: "$YELLOW"
+    crumbs:
+      fgColor: "$BASE"
+      bgColor: "$BLUE"
+      activeColor: "$PINK"
+    status:
+      newColor: "$GREEN"
+      modifyColor: "$YELLOW"
+      addColor: "$BLUE"
+      errorColor: "$RED"
+      highlightcolor: "$PINK"
+      killColor: "$SUBTLE"
+      completedColor: "$CYAN"
+    title:
+      fgColor: "$TEXT"
+      bgColor: "$BASE"
+      highlightColor: "$BLUE"
+      counterColor: "$YELLOW"
+      filterColor: "$PINK"
+  views:
+    table:
+      fgColor: "$TEXT"
+      bgColor: "$BASE"
+      cursorColor: "$SURFACE1"
+      header:
+        fgColor: "$BASE"
+        bgColor: "$BLUE"
+        sorterColor: "$YELLOW"
+    yaml:
+      keyColor: "$BLUE"
+      colonColor: "$SUBTLE"
+      valueColor: "$TEXT"
+    logs:
+      fgColor: "$TEXT"
+      bgColor: "$BASE"
+      indicator:
+        fgColor: "$BLUE"
+        bgColor: "$BASE"
+        toggleOnColor: "$GREEN"
+        toggleOffColor: "$SUBTLE"
+EOF
+}
+
 write_nvim_theme() {
   cat > "$CONFIG_DIR/nvim/lua/config/theme.lua" <<EOF
 return {
@@ -694,6 +763,7 @@ apply_theme() {
   write_zsh_syntax_theme
   write_fzf_theme
   write_btop_theme
+  write_k9s_theme
 
   printf '%s\n' "$theme_name" > "$CURRENT_FILE"
 
@@ -717,6 +787,7 @@ apply_theme() {
   echo "Zellij picks up theme changes after detach/reattach or a fresh session start."
   echo "Restart Neovim sessions to pick up the new theme cleanly."
   echo "Restart btop to pick up the new theme."
+  echo "Restart k9s to pick up the new skin if it is already running."
 }
 
 pick_theme() {

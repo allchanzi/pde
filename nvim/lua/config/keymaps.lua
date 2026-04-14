@@ -52,8 +52,12 @@ map("n", "[d", vim.diagnostic.goto_prev, { desc = "Previous diagnostic" })
 map("n", "gd", vim.lsp.buf.definition, { desc = "Go to definition" })
 map("n", "gr", vim.lsp.buf.references, { desc = "Go to references" })
 map("n", "K", vim.lsp.buf.hover, { desc = "Hover documentation" })
+map({ "n", "i" }, "<C-k>", vim.lsp.buf.signature_help, { desc = "Signature help" })
 map("n", "<leader>ca", vim.lsp.buf.code_action, { desc = "Code action" })
 map("n", "<leader>rn", vim.lsp.buf.rename, { desc = "Rename symbol" })
+map("n", "<leader>fR", function()
+  require("config.project_replace").open()
+end, { desc = "Project replace" })
 
 -- Formatting (<leader>cf to avoid conflict with <leader>f Find group)
 map("n", "<leader>cf", function()
@@ -81,6 +85,7 @@ map("n", "<leader>h", function()
     e("SPC f f",    "[F]ind [F]iles"),
     e("SPC f g",    "[F]ind by [G]rep"),
     e("SPC f r",    "[F]ind [R]ecent"),
+    e("SPC f R",    "[F]ind + [R]eplace"),
     e("SPC f s",    "[F]ind [S]tring (cursor)"),
     e("SPC f c",    "[F]ind in [C]urrent buf"),
     e("SPC f b",    "[F]ind [B]uffers"),
@@ -138,6 +143,7 @@ map("n", "<leader>h", function()
     e("g d",           "[G]o to [D]efinition"),
     e("g r",           "[G]o to [R]eferences"),
     e("K",             "Hover docs"),
+    e("Ctrl-k",        "Signature help"),
     "",
     section("WINDOWS & SPLITS"),
     e("SPC s v",       "[S]plit [V]ertical"),

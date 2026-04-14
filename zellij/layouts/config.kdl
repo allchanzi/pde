@@ -32,4 +32,9 @@ layout {
             args "-lc" "lazygit; exec \"$SHELL\" -l"
         }
     }
+    tab name="k9s" {
+        pane command="zsh" {
+            args "-lc" "k9s; exec \"$SHELL\" -l"
+        }
+    }
 }

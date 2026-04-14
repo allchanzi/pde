@@ -1,6 +1,6 @@
 default_shell "zsh"
 pane_frames false
-theme "dotfiles"
+theme "catppuccin-mocha"
 default_layout "default"
 session_serialization false
 mouse_mode true

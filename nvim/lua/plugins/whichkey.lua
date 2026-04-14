@@ -20,6 +20,7 @@ return {
         { "<leader>fp", desc = "Live grep with path filter" },
         { "<leader>fb", desc = "Buffers" },
         { "<leader>fr", desc = "Recent files" },
+        { "<leader>fR", desc = "Project replace" },
         { "<leader>fs", desc = "Grep word under cursor" },
         { "<leader>fc", desc = "Fuzzy find in buffer" },
         { "<leader>fh", desc = "Help tags" },

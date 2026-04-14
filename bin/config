@@ -11,6 +11,7 @@ while [[ -L "$SCRIPT_PATH" ]]; do
     SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
   fi
 done
+BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 MAIN_PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 
 SESSION_BASE="config"
@@ -112,7 +113,7 @@ cd "$PROJECT_DIR" || exit 1
 
 # ── Multiplexer ───────────────────────────────────────────────────────────────
 
-CONFIG_PREFS_HELPER="$(dirname "$0")/config-prefs"
+CONFIG_PREFS_HELPER="$BIN_DIR/config-prefs"
 if [[ ! -f "$CONFIG_PREFS_HELPER" && -f "$HOME/bin/config-prefs" ]]; then
   CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
 fi
@@ -133,10 +134,33 @@ if [[ "$AI_PROFILE" == "none" ]]; then
   AI_COMMAND_2=""
 fi
 
+zellij_session_exists() {
+  zellij list-sessions --short --no-formatting 2>/dev/null | grep -Fxq "$1"
+}
+
+shorten_zellij_session_name() {
+  local candidate="$1"
+  local max_len=24
+  local hash
+  local prefix_len
+
+  if (( ${#candidate} <= max_len )); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  hash="$(printf '%s' "$candidate" | shasum -a 1 | awk '{print substr($1,1,8)}')"
+  prefix_len=$((max_len - ${#hash} - 1))
+  printf '%s-%s\n' "${candidate:0:prefix_len}" "$hash"
+}
+
 if [[ "$MULTIPLEXER" == "zellij" ]]; then
+  SESSION="$(shorten_zellij_session_name "$SESSION")"
   ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.kdl"
   [[ -f "$HOME/.config/zellij/layouts/config.local.kdl" ]] && ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.local.kdl"
-  if zellij list-sessions 2>/dev/null | awk '{print $1}' | grep -Fxq "$SESSION"; then
+  if [[ -n "${ZELLIJ:-}" ]]; then
+    exec zellij action switch-session "$SESSION" -c "$PROJECT_DIR" -l "$ZELLIJ_LAYOUT"
+  elif zellij_session_exists "$SESSION"; then
     exec zellij attach "$SESSION"
   else
     exec zellij -s "$SESSION" -n "$ZELLIJ_LAYOUT"
@@ -180,6 +204,9 @@ if [[ -n "$AI_COMMAND_1" ]]; then
 fi
 tmux new-window -t "$SESSION":$WINDOW_INDEX -n git -c "$PROJECT_DIR"
 tmux send-keys -t "$SESSION":$WINDOW_INDEX "lazygit" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n k9s -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":$WINDOW_INDEX "k9s" C-m
 WINDOW_INDEX=$((WINDOW_INDEX + 1))
 tmux select-window -t "$SESSION":1
 tmux attach-session -t "$SESSION"

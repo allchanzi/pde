@@ -23,6 +23,7 @@ Each theme file defines a shared palette. The `theme` script generates:
 - `alacritty/theme.toml`
 - `tmux/theme.conf`
 - `lazygit/config.yml`
+- `k9s/skins/dotfiles.yaml`
 - `nvim/lua/config/theme.lua`
 
 The currently selected theme name is stored in `themes/current`.

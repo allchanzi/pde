@@ -1,5 +1,26 @@
 return {
   {
+    "RRethy/vim-illuminate",
+    event = "VeryLazy",
+    config = function()
+      local theme = require("config.theme")
+      local p = theme.palette
+
+      require("illuminate").configure({
+        delay = 180,
+        large_file_cutoff = 3000,
+        large_file_overrides = {
+          providers = { "lsp" },
+        },
+      })
+
+      vim.api.nvim_set_hl(0, "IlluminatedWordText", { bg = p.surface1 })
+      vim.api.nvim_set_hl(0, "IlluminatedWordRead", { bg = p.surface1 })
+      vim.api.nvim_set_hl(0, "IlluminatedWordWrite", { bg = p.surface2, bold = true })
+    end,
+  },
+
+  {
     "nvim-lualine/lualine.nvim",
     dependencies = { "nvim-tree/nvim-web-devicons" },
     event = "VeryLazy",

@@ -83,6 +83,7 @@ config/
 ├── Brewfile            Cross-platform Homebrew packages
 ├── Brewfile.macOS      macOS-only casks (terminals + fonts)
 ├── ghostty/            Ghostty terminal config
+├── k9s/                K9s config and generated skin
 ├── kitty/              Kitty terminal config
 ├── lazygit/            Lazygit config
 ├── nvim/               Neovim config (lazy.nvim)
@@ -255,6 +256,7 @@ theme update       # download latest official catppuccin configs from GitHub
 | tmux | `~/.tmux.theme.conf` (reloaded live if running) |
 | Zellij | `theme` line in `~/.config/zellij/config.kdl` |
 | Lazygit | `~/.config/lazygit/theme.yml` (or macOS equivalent) |
+| K9s | `~/Library/Application Support/k9s/skins/dotfiles.yaml` on macOS, `~/.config/k9s/skins/dotfiles.yaml` on Linux |
 | Neovim | `~/.config/nvim/lua/config/theme.lua` (colorscheme + background) |
 | zsh-syntax-highlighting | `~/.config/shell/catppuccin-syntax.zsh` |
 | fzf | `~/.config/shell/catppuccin-fzf.zsh` |
@@ -357,7 +359,7 @@ Usage:
 
 Options:
   --minimal       Generate: terminal, editor, ai, git
-  --full          Generate: terminal, editor, ai, git, docker, network, monitor
+  --full          Generate: terminal, editor, ai, git, docker, k9s, network, monitor
   --no-ai         Omit AI window
   --no-docker     Omit docker window
   --base-branch   Default base branch for new worktrees
@@ -394,7 +396,7 @@ When a branch is given the script:
 | Layout | Windows |
 |--------|---------|
 | `--minimal` | terminal, editor (nvim), ai (codex + claude), git (lazygit) |
-| `--full` | + term2, docker (lazydocker), network (ports/processes + btop + nload), monitor (btop) |
+| `--full` | + term2, docker (lazydocker), k9s, network (ports/processes + btop + nload), monitor (btop) |
 | `--config` | terminal, editor, ai, git — no term2, no docker |
 
 Generated Zellij layouts use the same tmux-like pane behavior: interactive tools return to a shell when they exit. To restore native Zellij command panes, edit [bin/mkproj](bin/mkproj) and replace the `...; exec "$SHELL" -l` wrappers with direct `pane command="..."` entries before regenerating the launcher.
@@ -632,13 +634,14 @@ Extra shell shortcut:
 | Kitty | `kitty/kitty.conf`, `kitty/theme.conf` | `~/.config/kitty/` | https://sw.kovidgoyal.net/kitty/conf/ | Restart Kitty for guaranteed reload |
 | Alacritty | `alacritty/alacritty.toml`, `alacritty/theme.toml` | `~/.config/alacritty/` | https://alacritty.org/config-alacritty.html | `live_config_reload = true`, so many changes apply automatically |
 | Lazygit | `lazygit/config.yml`, `lazygit/config.shared.yml` | `~/.config/lazygit/` or macOS app support path | https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md | Restart Lazygit |
+| K9s | `k9s/config.yaml`, `k9s/skins/dotfiles.yaml` | `~/.config/k9s/` or macOS app support path | https://k9scli.io/ | Restart K9s if the skin is already loaded |
 | btop | `btop/btop.conf` | `~/.config/btop/btop.conf` | https://github.com/aristocratos/btop#configurability | Restart btop |
 | zsh | `zsh/.zshrc`, `zsh/shell/*.zsh` | `~/.zshrc`, `~/.config/shell/` | https://zsh.sourceforge.io/Doc/ | `source ~/.zshrc` or `exec zsh -l` |
 | Preferences | per-user choices managed by setup | `~/.config/config/prefs` | n/a | Re-run `setup` or edit the file directly |
 
 Notes:
 
-- `theme apply <name>` rewrites the theme-managed files for Ghostty, Kitty, Alacritty, tmux, Zellij, Lazygit, Neovim, fzf, and zsh syntax highlighting
+- `theme apply <name>` rewrites the theme-managed files for Ghostty, Kitty, Alacritty, tmux, Zellij, Lazygit, K9s, Neovim, fzf, and zsh syntax highlighting
 - generated project launchers from `mkproj` also write Zellij layout files under `~/.config/zellij/layouts/`
 - some terminal settings are platform-specific; when in doubt, prefer the official docs page linked above for the exact option semantics
 - optional AI tool installation is handled by [install-optionals](bin/install-optionals) based on the current AI profile
@@ -665,6 +668,8 @@ All scripts live in `bin/` and are symlinked to `~/bin/` by `bootstrap.sh`.
 ### `config`
 
 Main entry-point for this dotfiles repo.
+
+Default dashboard windows/tabs: `terminal`, `editor`, `ai`, `git`, `k9s`.
 
 ```
 config                                Open multiplexer session for this repo

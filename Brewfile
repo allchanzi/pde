@@ -35,6 +35,7 @@ brew "zsh-syntax-highlighting"
 # --------------------------------------------
 brew "lazygit"
 brew "lazydocker"
+brew "k9s"
 
 # Optional but useful for JSON/YAML work
 brew "jq"

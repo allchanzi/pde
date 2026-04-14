@@ -78,8 +78,10 @@ mkdir -p "$HOME/.config/config"
 if [[ "$OS" == "Darwin" ]]; then
   mkdir -p "$HOME/Library/Application Support"
   LAZYGIT_CONFIG_DIR="$HOME/Library/Application Support/lazygit"
+  K9S_CONFIG_DIR="$HOME/Library/Application Support/k9s"
 else
   LAZYGIT_CONFIG_DIR="$HOME/.config/lazygit"
+  K9S_CONFIG_DIR="$HOME/.config/k9s"
 fi
 
 ########################################
@@ -106,6 +108,7 @@ backup_if_needed "$HOME/.tmux.theme.conf"
 backup_if_needed "$HOME/.zshrc"
 backup_if_needed "$HOME/.config/shell"
 backup_if_needed "$LAZYGIT_CONFIG_DIR"
+backup_if_needed "$K9S_CONFIG_DIR"
 backup_if_needed "$HOME/bin/config"
 backup_if_needed "$HOME/bin/mkproj"
 backup_if_needed "$HOME/bin/theme"
@@ -133,6 +136,7 @@ ln -sf "$CONFIG_DIR/tmux/theme.conf" "$HOME/.tmux.theme.conf"
 ln -sf "$CONFIG_DIR/zsh/.zshrc" "$HOME/.zshrc"
 ln -sfn "$CONFIG_DIR/zsh/shell" "$HOME/.config/shell"
 ln -sfn "$CONFIG_DIR/lazygit" "$LAZYGIT_CONFIG_DIR"
+ln -sfn "$CONFIG_DIR/k9s" "$K9S_CONFIG_DIR"
 ln -sf "$CONFIG_DIR/bin/config" "$HOME/bin/config"
 ln -sf "$CONFIG_DIR/bin/mkproj" "$HOME/bin/mkproj"
 ln -sf "$CONFIG_DIR/bin/theme" "$HOME/bin/theme"

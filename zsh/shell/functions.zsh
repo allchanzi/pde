@@ -79,6 +79,7 @@ fzf-history-run-widget() {
       fzf --height=40% --reverse --border \
         --prompt='History> ' \
         --query="$LBUFFER" \
+        --no-sort \
         --bind='enter:accept'
   )"
 

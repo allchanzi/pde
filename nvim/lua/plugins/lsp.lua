@@ -18,6 +18,52 @@ return {
   },
 
   {
+    "L3MON4D3/LuaSnip",
+    dependencies = {
+      "saadparwaiz1/cmp_luasnip",
+    },
+    config = function()
+      local ls = require("luasnip")
+
+      ls.config.set_config({
+        history = true,
+        updateevents = "TextChanged,TextChangedI",
+      })
+
+      ls.add_snippets("python", require("config.snippets.python"))
+    end,
+  },
+
+  {
+    "ray-x/lsp_signature.nvim",
+    event = "InsertEnter",
+    opts = function()
+      local theme = require("config.theme")
+      local p = theme.palette
+
+      vim.api.nvim_set_hl(0, "LspSignatureActiveParameter", {
+        bg = p.surface1,
+        fg = p.text,
+        bold = true,
+      })
+
+      return {
+        bind = true,
+        hint_enable = false,
+        floating_window = true,
+        floating_window_above_cur_line = true,
+        doc_lines = 0,
+        fix_pos = true,
+        close_timeout = 2000,
+        handler_opts = {
+          border = "rounded",
+        },
+        hi_parameter = "LspSignatureActiveParameter",
+      }
+    end,
+  },
+
+  {
     "neovim/nvim-lspconfig",
     dependencies = {
       "williamboman/mason.nvim",
@@ -105,21 +151,54 @@ return {
       "hrsh7th/cmp-nvim-lsp",
       "hrsh7th/cmp-buffer",
       "hrsh7th/cmp-path",
+      "L3MON4D3/LuaSnip",
+      "saadparwaiz1/cmp_luasnip",
     },
     config = function()
       local cmp = require("cmp")
+      local luasnip = require("luasnip")
 
       cmp.setup({
+        snippet = {
+          expand = function(args)
+            luasnip.lsp_expand(args.body)
+          end,
+        },
         mapping = cmp.mapping.preset.insert({
           ["<C-Space>"] = cmp.mapping.complete(),
-          ["<CR>"] = cmp.mapping.confirm({ select = true }),
-          ["<Tab>"] = cmp.mapping.select_next_item(),
-          ["<S-Tab>"] = cmp.mapping.select_prev_item(),
+          ["<CR>"] = cmp.mapping(function(fallback)
+            if cmp.visible() then
+              cmp.confirm({ select = true })
+            elseif luasnip.expand_or_locally_jumpable() then
+              luasnip.expand_or_jump()
+            else
+              fallback()
+            end
+          end, { "i", "s" }),
+          ["<Tab>"] = cmp.mapping(function(fallback)
+            if cmp.visible() then
+              cmp.select_next_item()
+            elseif luasnip.expand_or_locally_jumpable() then
+              luasnip.expand_or_jump()
+            else
+              fallback()
+            end
+          end, { "i", "s" }),
+          ["<S-Tab>"] = cmp.mapping(function(fallback)
+            if cmp.visible() then
+              cmp.select_prev_item()
+            elseif luasnip.locally_jumpable(-1) then
+              luasnip.jump(-1)
+            else
+              fallback()
+            end
+          end, { "i", "s" }),
         }),
         sources = cmp.config.sources({
-          { name = "nvim_lsp" },
-          { name = "path" },
-          { name = "buffer" },
+          { name = "luasnip", priority = 1100 },
+          { name = "nvim_lsp", priority = 1000 },
+          { name = "path", priority = 750 },
+          { name = "buffer", priority = 500 },
         }),
       })
     end,
