@@ -1,4 +1,4 @@
-# config
+# Personal Development Environment
 
 Portable dotfiles and a terminal-first development environment for macOS and Linux.
 
