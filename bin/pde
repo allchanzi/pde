@@ -14,7 +14,7 @@ done
 BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 MAIN_PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 
-SESSION_BASE="config"
+SESSION_BASE="pde"
 BASE_BRANCH=""
 
 BRANCH=""
@@ -22,13 +22,13 @@ FORCE=0
 
 usage() {
   echo "Usage:"
-  echo "  config"
-  echo "  config dashboard"
-  echo "  config -b <branch>"
-  echo "  config -b <branch> -f"
-  echo "  config install"
-  echo "  config install --reset"
-  echo "  config theme"
+  echo "  pde"
+  echo "  pde dashboard"
+  echo "  pde -b <branch>"
+  echo "  pde -b <branch> -f"
+  echo "  pde install"
+  echo "  pde install --reset"
+  echo "  pde theme"
 }
 
 case "${1:-}" in
@@ -113,15 +113,15 @@ cd "$PROJECT_DIR" || exit 1
 
 # ── Multiplexer ───────────────────────────────────────────────────────────────
 
-CONFIG_PREFS_HELPER="$BIN_DIR/config-prefs"
-if [[ ! -f "$CONFIG_PREFS_HELPER" && -f "$HOME/bin/config-prefs" ]]; then
-  CONFIG_PREFS_HELPER="$HOME/bin/config-prefs"
+PDE_PREFS_HELPER="$BIN_DIR/pde-prefs"
+if [[ ! -f "$PDE_PREFS_HELPER" && -f "$HOME/bin/pde-prefs" ]]; then
+  PDE_PREFS_HELPER="$HOME/bin/pde-prefs"
 fi
-if [[ -f "$CONFIG_PREFS_HELPER" ]]; then
+if [[ -f "$PDE_PREFS_HELPER" ]]; then
   # shellcheck source=/dev/null
-  source "$CONFIG_PREFS_HELPER"
-  config_prefs_migrate
-  config_prefs_load
+  source "$PDE_PREFS_HELPER"
+  pde_prefs_migrate
+  pde_prefs_load
 fi
 
 MULTIPLEXER="${MULTIPLEXER:-tmux}"
@@ -156,8 +156,8 @@ shorten_zellij_session_name() {
 
 if [[ "$MULTIPLEXER" == "zellij" ]]; then
   SESSION="$(shorten_zellij_session_name "$SESSION")"
-  ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.kdl"
-  [[ -f "$HOME/.config/zellij/layouts/config.local.kdl" ]] && ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/config.local.kdl"
+  ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/pde.kdl"
+  [[ -f "$HOME/.config/zellij/layouts/pde.local.kdl" ]] && ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/pde.local.kdl"
   if [[ -n "${ZELLIJ:-}" ]]; then
     exec zellij action switch-session "$SESSION" -c "$PROJECT_DIR" -l "$ZELLIJ_LAYOUT"
   elif zellij_session_exists "$SESSION"; then
@@ -175,7 +175,7 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exit 0
 fi
 
-TMUX_LAYOUT_LOCAL="$HOME/.config/tmux/config.local.sh"
+TMUX_LAYOUT_LOCAL="$HOME/.config/tmux/pde.local.sh"
 if [[ -f "$TMUX_LAYOUT_LOCAL" ]]; then
   # shellcheck source=/dev/null
   source "$TMUX_LAYOUT_LOCAL"

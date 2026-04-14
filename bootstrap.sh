@@ -73,7 +73,7 @@ fi
 echo "📁 Creating directories..."
 mkdir -p "$HOME/.config"
 mkdir -p "$HOME/bin"
-mkdir -p "$HOME/.config/config"
+mkdir -p "$HOME/.config/pde"
 
 if [[ "$OS" == "Darwin" ]]; then
   mkdir -p "$HOME/Library/Application Support"
@@ -109,11 +109,11 @@ backup_if_needed "$HOME/.zshrc"
 backup_if_needed "$HOME/.config/shell"
 backup_if_needed "$LAZYGIT_CONFIG_DIR"
 backup_if_needed "$K9S_CONFIG_DIR"
-backup_if_needed "$HOME/bin/config"
-backup_if_needed "$HOME/bin/mkproj"
+backup_if_needed "$HOME/bin/pde"
+backup_if_needed "$HOME/bin/pde-create"
 backup_if_needed "$HOME/bin/theme"
 backup_if_needed "$HOME/bin/ai-system-snapshot"
-backup_if_needed "$HOME/bin/config-prefs"
+backup_if_needed "$HOME/bin/pde-prefs"
 backup_if_needed "$HOME/bin/install-optionals"
 backup_if_needed "$HOME/bin/tmux-open-in-nvim"
 backup_if_needed "$HOME/bin/setup"
@@ -137,22 +137,22 @@ ln -sf "$CONFIG_DIR/zsh/.zshrc" "$HOME/.zshrc"
 ln -sfn "$CONFIG_DIR/zsh/shell" "$HOME/.config/shell"
 ln -sfn "$CONFIG_DIR/lazygit" "$LAZYGIT_CONFIG_DIR"
 ln -sfn "$CONFIG_DIR/k9s" "$K9S_CONFIG_DIR"
-ln -sf "$CONFIG_DIR/bin/config" "$HOME/bin/config"
-ln -sf "$CONFIG_DIR/bin/mkproj" "$HOME/bin/mkproj"
+ln -sf "$CONFIG_DIR/bin/pde" "$HOME/bin/pde"
+ln -sf "$CONFIG_DIR/bin/pde-create" "$HOME/bin/pde-create"
 ln -sf "$CONFIG_DIR/bin/theme" "$HOME/bin/theme"
 ln -sf "$CONFIG_DIR/bin/ai-system-snapshot" "$HOME/bin/ai-system-snapshot"
-ln -sf "$CONFIG_DIR/bin/config-prefs" "$HOME/bin/config-prefs"
+ln -sf "$CONFIG_DIR/bin/pde-prefs" "$HOME/bin/pde-prefs"
 ln -sf "$CONFIG_DIR/bin/install-optionals" "$HOME/bin/install-optionals"
 ln -sf "$CONFIG_DIR/bin/network-ports" "$HOME/bin/network-ports"
 ln -sf "$CONFIG_DIR/bin/run-and-return-to-shell" "$HOME/bin/run-and-return-to-shell"
 ln -sf "$CONFIG_DIR/bin/tmux-open-in-nvim" "$HOME/bin/tmux-open-in-nvim"
 ln -sf "$CONFIG_DIR/bin/setup" "$HOME/bin/setup"
 
-chmod +x "$HOME/bin/config"
-chmod +x "$HOME/bin/mkproj"
+chmod +x "$HOME/bin/pde"
+chmod +x "$HOME/bin/pde-create"
 chmod +x "$HOME/bin/theme"
 chmod +x "$HOME/bin/ai-system-snapshot"
-chmod +x "$HOME/bin/config-prefs"
+chmod +x "$HOME/bin/pde-prefs"
 chmod +x "$HOME/bin/install-optionals"
 chmod +x "$HOME/bin/network-ports"
 chmod +x "$HOME/bin/run-and-return-to-shell"
@@ -167,10 +167,10 @@ if [[ -x "$HOME/bin/theme" ]]; then
   "$HOME/bin/theme" apply current >/dev/null 2>&1 || true
 fi
 
-if [[ -x "$HOME/bin/config-prefs" ]]; then
+if [[ -x "$HOME/bin/pde-prefs" ]]; then
   # shellcheck source=/dev/null
-  source "$HOME/bin/config-prefs"
-  config_prefs_migrate
+  source "$HOME/bin/pde-prefs"
+  pde_prefs_migrate
 fi
 
 ########################################
@@ -226,4 +226,4 @@ echo ""
 echo "Next steps:"
 echo "  1. Restart terminal"
 echo "  2. source ~/.zshrc"
-echo "  3. mkproj <name> <path>   # create a project launcher"
+echo "  3. pde-create <name> <path>   # create a project launcher"

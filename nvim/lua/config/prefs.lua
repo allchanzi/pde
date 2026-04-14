@@ -2,6 +2,7 @@ local M = {}
 
 local cache = nil
 local prefs_paths = {
+  vim.fn.expand("~/.config/pde/prefs"),
   vim.fn.expand("~/.config/config/prefs"),
   vim.fn.expand("~/.config/shell/prefs"),
 }

@@ -17,7 +17,7 @@ This repo bootstraps a full local setup around Neovim, tmux or Zellij, themed te
 - [Editing Configs](#editing-configs)
 - [Theme system](#theme-system)
 - [Multiplexer](#multiplexer)
-- [Project launcher — mkproj](#project-launcher--mkproj)
+- [Project launcher — pde-create](#project-launcher--pde-create)
 - [Neovim](#neovim)
 - [Shell](#shell)
 - [Terminals](#terminals)
@@ -32,7 +32,7 @@ This repo bootstraps a full local setup around Neovim, tmux or Zellij, themed te
 - One-command bootstrap via Homebrew, symlinks, theme application, and Neovim plugin sync
 - Choice of `tmux` or `zellij`, with per-user preferences stored outside git
 - Shared theming across Ghostty, Kitty, Alacritty, tmux, Zellij, Lazygit, Neovim, fzf, and shell syntax highlighting
-- Project launcher generator (`mkproj`) with branch-aware git worktree support
+- Project launcher generator (`pde-create`) with branch-aware git worktree support
 - Optional AI panes and machine-local overrides without forking the tracked config
 
 ---
@@ -44,14 +44,14 @@ git clone https://github.com/<your-user>/<your-repo> ~/git/config
 cd ~/git/config
 ./bootstrap.sh
 exec zsh -l
-config install
-config
+pde install
+pde
 ```
 
 After that, generate per-project launchers as needed:
 
 ```bash
-mkproj my-project ~/git/my-project --full
+pde-create my-project ~/git/my-project --full
 my-project
 ```
 
@@ -61,7 +61,7 @@ my-project
 
 Everything is managed through a bootstrap + symlink approach. After cloning you run one script and the environment is wired up: packages installed via Homebrew, config directories symlinked into `~/.config`, a Neovim plugin sync triggered, and an interactive wizard that lets you pick your multiplexer, terminal emulator, AI profile, optional features, and colour theme.
 
-The repo is structured so that tracked files stay generic while user-specific choices live in `~/.config/config/prefs` and optional local override files under `~/.config/tmux/` or `~/.config/zellij/layouts/`.
+The repo is structured so that tracked files stay generic while user-specific choices live in `~/.config/pde/prefs` and optional local override files under `~/.config/tmux/` or `~/.config/zellij/layouts/`.
 
 ---
 
@@ -71,10 +71,10 @@ The repo is structured so that tracked files stay generic while user-specific ch
 config/
 ├── alacritty/          Alacritty terminal config
 ├── bin/                Executable scripts (symlinked into ~/bin)
-│   ├── config          Dashboard / theme / install entry-point
-│   ├── config-prefs    Shared helper for per-user preferences
+│   ├── pde             Dashboard / theme / install entry-point
+│   ├── pde-prefs       Shared helper for per-user preferences
 │   ├── install-optionals  Install optional AI tools selected in setup
-│   ├── mkproj          Generate project launcher scripts
+│   ├── pde-create          Generate project launcher scripts
 │   ├── setup           Interactive setup wizard
 │   ├── theme           Theme picker and applicator
 │   ├── ai-system-snapshot  Snapshot LLM context about the system
@@ -156,7 +156,7 @@ After bootstrap completes, run the **interactive setup wizard** to choose your m
 ```bash
 setup
 # or
-config install
+pde install
 ```
 
 To remove your per-user wizard choices and go back to the repo defaults:
@@ -164,7 +164,7 @@ To remove your per-user wizard choices and go back to the repo defaults:
 ```bash
 setup --reset
 # or
-config install --reset
+pde install --reset
 ```
 
 Restart your terminal when done.
@@ -178,8 +178,8 @@ git clone https://github.com/<your-user>/<your-repo> ~/git/config
 cd ~/git/config
 ./bootstrap.sh
 exec zsh -l
-config install
-config
+pde install
+pde
 ```
 
 If you already have a repo-specific launcher script in `bin/`, you can run it after `bootstrap.sh` has linked it into `~/bin`. Example:
@@ -191,7 +191,7 @@ example-proj-name
 If you want a launcher for some other repo, generate it first:
 
 ```bash
-mkproj example-proj-name ~/git/example-proj-name --full
+pde-create example-proj-name ~/git/example-proj-name --full
 example-proj-name
 ```
 
@@ -204,7 +204,7 @@ example-proj-name
 - edit the files in this repo, not the generated paths under `~/.config` or `~/bin`
 - the matching live path updates immediately because it is a symlink
 - if you add a brand new top-level config file or script, re-run `./bootstrap.sh` if it also needs a new symlink in `$HOME`
-- user-specific choices such as terminal, multiplexer, AI commands, and optional features now live outside the repo in `~/.config/config/prefs`
+- user-specific choices such as terminal, multiplexer, AI commands, and optional features now live outside the repo in `~/.config/pde/prefs`
 
 Typical edit flow:
 
@@ -277,7 +277,7 @@ Required variables: `THEME_NAME`, `NVIM_COLORSCHEME`, `NVIM_BACKGROUND`, `BASE`,
 
 ## Multiplexer
 
-The environment supports both **tmux** and **Zellij**. Your per-user preferences are stored in `~/.config/config/prefs`:
+The environment supports both **tmux** and **Zellij**. Your per-user preferences are stored in `~/.config/pde/prefs`:
 
 ```
 MULTIPLEXER=zellij   # or tmux
@@ -295,10 +295,10 @@ Switch at any time:
 ```bash
 setup          # re-run the wizard
 setup --reset  # remove per-user prefs and dashboard overrides
-# or edit ~/.config/config/prefs directly
+# or edit ~/.config/pde/prefs directly
 ```
 
-All project launcher scripts generated by `mkproj` and the main `config` launcher read this preference at runtime and launch the correct multiplexer automatically.
+All project launcher scripts generated by `pde-create` and the main `pde` launcher read this preference at runtime and launch the correct multiplexer automatically.
 
 ### tmux
 
@@ -337,25 +337,25 @@ Zellij panes in these layouts are configured in a tmux-like style:
 - `editor`, `ai`, `git`, `docker`, `network`, and `monitor` panes return to a login shell after the foreground command exits
 - when `nvim`, `codex`, `claude`, `lazygit`, `btop`, etc. exit, the pane falls back to a login shell instead of staying as a dead command pane
 - close a pane you no longer want with `Ctrl-a q`
-- for machine-local overrides, `config` prefers `~/.config/zellij/layouts/config.local.kdl` if it exists
-- `setup` writes `~/.config/zellij/layouts/config.local.kdl` from the selected AI profile in `~/.config/config/prefs`
+- for machine-local overrides, `pde` prefers `~/.config/zellij/layouts/pde.local.kdl` if it exists
+- `setup` writes `~/.config/zellij/layouts/pde.local.kdl` from the selected AI profile in `~/.config/pde/prefs`
 - `Ctrl-a` now behaves more like a top-level command palette: the status bar shows tmux-mode options, and `Ctrl-a ?` opens the built-in floating session manager
 
 To switch back to native Zellij command panes:
 
-- edit [zellij/layouts/config.kdl](zellij/layouts/config.kdl)
+- edit [zellij/layouts/pde.kdl](zellij/layouts/pde.kdl)
 - replace `pane command="zsh" { args "-lc" "...; exec \"$SHELL\" -l"` with direct command panes such as `pane command="claude"` or `pane command="nvim" { args "." }`
-- for generated project launchers, make the same change in [bin/mkproj](bin/mkproj) and regenerate the launcher
+- for generated project launchers, make the same change in [bin/pde-create](bin/pde-create) and regenerate the launcher
 
 ---
 
-## Project launcher — mkproj
+## Project launcher — pde-create
 
-`mkproj` generates a self-contained project launcher script and a matching Zellij layout file.
+`pde-create` generates a self-contained project launcher script and a matching Zellij layout file.
 
 ```
 Usage:
-  mkproj <command-name> <project-dir> [options]
+  pde-create <command-name> <project-dir> [options]
 
 Options:
   --minimal       Generate: terminal, editor, ai, git
@@ -363,17 +363,17 @@ Options:
   --no-ai         Omit AI window
   --no-docker     Omit docker window
   --base-branch   Default base branch for new worktrees
-  --config        Preset for config/dotfiles repos (no term2, no docker)
+  --dotfiles      Preset for dotfiles/config repos (no term2, no docker)
 ```
 
 **Examples:**
 
 ```bash
 # Create ~/bin/example-proj-name and ~/.config/zellij/layouts/example-proj-name.kdl
-mkproj example-proj-name ~/git/example-proj-name --full --base-branch main
+pde-create example-proj-name ~/git/example-proj-name --full --base-branch main
 
-# Config/dotfiles-style repo preset
-mkproj example-config-repo ~/git/example-config-repo --config
+# Dotfiles-style repo preset
+pde-create example-dotfiles-repo ~/git/example-dotfiles-repo --dotfiles
 ```
 
 The generated launcher supports:
@@ -397,26 +397,26 @@ When a branch is given the script:
 |--------|---------|
 | `--minimal` | terminal, editor (nvim), ai (codex + claude), git (lazygit) |
 | `--full` | + term2, docker (lazydocker), k9s, network (ports/processes + btop + nload), monitor (btop) |
-| `--config` | terminal, editor, ai, git — no term2, no docker |
+| `--dotfiles` | terminal, editor, ai, git — no term2, no docker |
 
-Generated Zellij layouts use the same tmux-like pane behavior: interactive tools return to a shell when they exit. To restore native Zellij command panes, edit [bin/mkproj](bin/mkproj) and replace the `...; exec "$SHELL" -l` wrappers with direct `pane command="..."` entries before regenerating the launcher.
+Generated Zellij layouts use the same tmux-like pane behavior: interactive tools return to a shell when they exit. To restore native Zellij command panes, edit [bin/pde-create](bin/pde-create) and replace the `...; exec "$SHELL" -l` wrappers with direct `pane command="..."` entries before regenerating the launcher.
 
-AI panes are generated from the currently selected AI profile when you run `mkproj`. If you later change the AI profile, re-run `mkproj` for existing project launchers or create a machine-local override layout/script.
+AI panes are generated from the currently selected AI profile when you run `pde-create`. If you later change the AI profile, re-run `pde-create` for existing project launchers or create a machine-local override layout/script.
 
 ### Pane customization
 
 Source of truth for default pane/window layouts:
 
-- tmux dashboard layout: [bin/config](bin/config)
-- tmux generated project layouts: [bin/mkproj](bin/mkproj)
-- zellij dashboard layout: [config.kdl](zellij/layouts/config.kdl)
-- zellij generated project layouts: [bin/mkproj](bin/mkproj)
+- tmux dashboard layout: [bin/pde](bin/pde)
+- tmux generated project layouts: [bin/pde-create](bin/pde-create)
+- zellij dashboard layout: [pde.kdl](zellij/layouts/pde.kdl)
+- zellij generated project layouts: [bin/pde-create](bin/pde-create)
 
 Simple machine-local override paths:
 
-- Zellij dashboard: `~/.config/zellij/layouts/config.local.kdl`
+- Zellij dashboard: `~/.config/zellij/layouts/pde.local.kdl`
 - Zellij project launcher `example-proj-name`: `~/.config/zellij/layouts/example-proj-name.local.kdl`
-- tmux dashboard: `~/.config/tmux/config.local.sh`
+- tmux dashboard: `~/.config/tmux/pde.local.sh`
 - tmux project launcher `example-proj-name`: `~/.config/tmux/example-proj-name.local.sh`
 
 If a local override file exists, the launcher prefers it over the shared default. This lets each person keep personal pane setups without editing repo-tracked files.
@@ -425,7 +425,7 @@ Minimal tmux local override example:
 
 ```bash
 mkdir -p ~/.config/tmux
-cat > ~/.config/tmux/config.local.sh <<'EOF'
+cat > ~/.config/tmux/pde.local.sh <<'EOF'
 setup_tmux_layout() {
   local session="$1"
   local project_dir="$2"
@@ -637,12 +637,12 @@ Extra shell shortcut:
 | K9s | `k9s/config.yaml`, `k9s/skins/dotfiles.yaml` | `~/.config/k9s/` or macOS app support path | https://k9scli.io/ | Restart K9s if the skin is already loaded |
 | btop | `btop/btop.conf` | `~/.config/btop/btop.conf` | https://github.com/aristocratos/btop#configurability | Restart btop |
 | zsh | `zsh/.zshrc`, `zsh/shell/*.zsh` | `~/.zshrc`, `~/.config/shell/` | https://zsh.sourceforge.io/Doc/ | `source ~/.zshrc` or `exec zsh -l` |
-| Preferences | per-user choices managed by setup | `~/.config/config/prefs` | n/a | Re-run `setup` or edit the file directly |
+| Preferences | per-user choices managed by setup | `~/.config/pde/prefs` | n/a | Re-run `setup` or edit the file directly |
 
 Notes:
 
 - `theme apply <name>` rewrites the theme-managed files for Ghostty, Kitty, Alacritty, tmux, Zellij, Lazygit, K9s, Neovim, fzf, and zsh syntax highlighting
-- generated project launchers from `mkproj` also write Zellij layout files under `~/.config/zellij/layouts/`
+- generated project launchers from `pde-create` also write Zellij layout files under `~/.config/zellij/layouts/`
 - some terminal settings are platform-specific; when in doubt, prefer the official docs page linked above for the exact option semantics
 - optional AI tool installation is handled by [install-optionals](bin/install-optionals) based on the current AI profile
 
@@ -665,38 +665,38 @@ Notes:
 
 All scripts live in `bin/` and are symlinked to `~/bin/` by `bootstrap.sh`.
 
-### `config`
+### `pde`
 
 Main entry-point for this dotfiles repo.
 
 Default dashboard windows/tabs: `terminal`, `editor`, `ai`, `git`, `k9s`.
 
 ```
-config                                Open multiplexer session for this repo
-config dashboard [-b <branch>] [-f]   Same as above, explicit subcommand form
-config [-b <branch>] [-f]             Open or create a worktree session for this repo
-config theme [theme-command]          Run `theme` through the main entry-point
-config install                        Run the setup wizard
-config -h                             Help
+pde                                Open multiplexer session for this repo
+pde dashboard [-b <branch>] [-f]   Same as above, explicit subcommand form
+pde [-b <branch>] [-f]             Open or create a worktree session for this repo
+pde theme [theme-command]          Run `theme` through the main entry-point
+pde install                        Run the setup wizard
+pde -h                             Help
 ```
 
 ### `setup`
 
-Interactive wizard run by `setup` or `config install`. Steps through:
+Interactive wizard run by `setup` or `pde install`. Steps through:
 
 1. Package installation (`bootstrap.sh`)
-2. Multiplexer choice (tmux / zellij) — saved to `~/.config/config/prefs`
-3. Terminal choice (kitty / ghostty / alacritty) — saved to `~/.config/config/prefs`
-4. AI choice (`codex+claude`, `codex`, `claude`, `custom`, `none`) — saved to `~/.config/config/prefs`
-5. Extra feature choice (currently `pants`) — saved to `~/.config/config/prefs`
+2. Multiplexer choice (tmux / zellij) — saved to `~/.config/pde/prefs`
+3. Terminal choice (kitty / ghostty / alacritty) — saved to `~/.config/pde/prefs`
+4. AI choice (`codex+claude`, `codex`, `claude`, `custom`, `none`) — saved to `~/.config/pde/prefs`
+5. Extra feature choice (currently `pants`) — saved to `~/.config/pde/prefs`
 6. Theme picker (`bin/theme`)
 7. Optional AI tool installation (`bin/install-optionals`)
 
 Reset mode:
 
 - `setup --reset`
-- `config install --reset`
-- removes `~/.config/config/prefs`, the legacy `~/.config/shell/prefs`, `~/.config/zellij/layouts/config.local.kdl`, and `~/.config/tmux/config.local.sh`
+- `pde install --reset`
+- removes `~/.config/pde/prefs`, the legacy `~/.config/config/prefs` and `~/.config/shell/prefs`, `~/.config/zellij/layouts/pde.local.kdl`, and `~/.config/tmux/pde.local.sh`
 - leaves project-specific local overrides such as `~/.config/zellij/layouts/<name>.local.kdl` untouched
 
 ### `theme`
@@ -709,17 +709,17 @@ theme apply <name>       Apply a theme by name
 theme update             Download latest catppuccin configs from GitHub
 ```
 
-### `mkproj`
+### `pde-create`
 
-Generate a project launcher script + matching Zellij layout. See [Project launcher](#project-launcher--mkproj).
+Generate a project launcher script + matching Zellij layout. See [Project launcher](#project-launcher--pde-create).
 
-### `config-prefs`
+### `pde-prefs`
 
-Shared shell helper used by the launcher scripts and setup wizard to read and write per-user preferences from `~/.config/config/prefs`.
+Shared shell helper used by the launcher scripts and setup wizard to read and write per-user preferences from `~/.config/pde/prefs`.
 
 ### `install-optionals`
 
-Installs optional AI tools based on the current AI profile in `~/.config/config/prefs`. Supported automatic installs currently cover:
+Installs optional AI tools based on the current AI profile in `~/.config/pde/prefs`. Supported automatic installs currently cover:
 
 - `codex` via `@openai/codex`
 - `claude` via `@anthropic-ai/claude-code`

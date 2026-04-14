@@ -13,18 +13,18 @@ while [[ -L "$SCRIPT_PATH" ]]; do
 done
 BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
-CONFIG_PREFS_HELPER="$BIN_DIR/config-prefs"
-if [[ -f "$CONFIG_PREFS_HELPER" ]]; then
+PDE_PREFS_HELPER="$BIN_DIR/pde-prefs"
+if [[ -f "$PDE_PREFS_HELPER" ]]; then
   # shellcheck source=/dev/null
-  source "$CONFIG_PREFS_HELPER"
-  config_prefs_migrate
-  config_prefs_load
+  source "$PDE_PREFS_HELPER"
+  pde_prefs_migrate
+  pde_prefs_load
 fi
 
 usage() {
   cat <<USAGE
 Usage:
-  mkproj <command-name> <project-dir> [options]
+  pde-create <command-name> <project-dir> [options]
 
 Options:
   --minimal       Generate: terminal, editor, ai, git
@@ -32,14 +32,14 @@ Options:
   --no-ai         Omit AI window
   --no-docker     Omit docker window
   --base-branch   Branch to use as the base for new worktrees
-  --config        Optimized preset for config/dotfiles repo
+  --dotfiles      Optimized preset for a dotfiles/config repo
   -h, --help      Show this help
 
 Examples:
-  mkproj example-proj-name ~/git/example-proj-name --full
-  mkproj example-proj-name ~/git/example-proj-name --full --base-branch main
-  mkproj example-config-repo ~/git/example-config-repo --config
-  mkproj example-proj-name ~/git/example-proj-name --minimal --no-ai
+  pde-create example-proj-name ~/git/example-proj-name --full
+  pde-create example-proj-name ~/git/example-proj-name --full --base-branch main
+  pde-create example-dotfiles-repo ~/git/example-dotfiles-repo --dotfiles
+  pde-create example-proj-name ~/git/example-proj-name --minimal --no-ai
 USAGE
 }
 
@@ -58,7 +58,7 @@ shift 2
 LAYOUT="minimal"
 WITH_AI=1
 WITH_DOCKER=1
-CONFIG_MODE=0
+DOTFILES_MODE=0
 BASE_BRANCH=""
 AI_PROFILE="${AI_PROFILE:-codex+claude}"
 AI_COMMAND_1="${AI_COMMAND_1:-codex}"
@@ -120,7 +120,7 @@ while [[ $# -gt 0 ]]; do
     --no-ai)      WITH_AI=0; shift ;;
     --no-docker)  WITH_DOCKER=0; shift ;;
     --base-branch) BASE_BRANCH="${2:-}"; shift 2 ;;
-    --config)     CONFIG_MODE=1; LAYOUT="minimal"; WITH_DOCKER=0; shift ;;
+    --dotfiles)   DOTFILES_MODE=1; LAYOUT="minimal"; WITH_DOCKER=0; shift ;;
     -h|--help)    usage; exit 0 ;;
     *) echo "Unknown option: $1"; usage; exit 1 ;;
   esac
@@ -182,7 +182,7 @@ generate_zellij_layout() {
 
   tabs+='    tab name="git" {\n        pane command="zsh" {\n            args "-lc" "lazygit; exec \"$SHELL\" -l"\n        }\n    }\n'
 
-  if [[ "$CONFIG_MODE" -eq 0 ]]; then
+  if [[ "$DOTFILES_MODE" -eq 0 ]]; then
     tabs+='    tab name="term2" {\n        pane\n    }\n'
   fi
 
@@ -300,15 +300,15 @@ cd "\$PROJECT_DIR" || exit 1
 
 # ── Multiplexer ───────────────────────────────────────────────────────────────
 
-CONFIG_PREFS_HELPER="\$BIN_DIR/config-prefs"
-if [[ ! -f "\$CONFIG_PREFS_HELPER" && -f "\$HOME/bin/config-prefs" ]]; then
-  CONFIG_PREFS_HELPER="\$HOME/bin/config-prefs"
+PDE_PREFS_HELPER="\$BIN_DIR/pde-prefs"
+if [[ ! -f "\$PDE_PREFS_HELPER" && -f "\$HOME/bin/pde-prefs" ]]; then
+  PDE_PREFS_HELPER="\$HOME/bin/pde-prefs"
 fi
-if [[ -f "\$CONFIG_PREFS_HELPER" ]]; then
+if [[ -f "\$PDE_PREFS_HELPER" ]]; then
   # shellcheck source=/dev/null
-  source "\$CONFIG_PREFS_HELPER"
-  config_prefs_migrate
-  config_prefs_load
+  source "\$PDE_PREFS_HELPER"
+  pde_prefs_migrate
+  pde_prefs_load
 fi
 
 MULTIPLEXER="\${MULTIPLEXER:-tmux}"
@@ -402,7 +402,7 @@ tmux send-keys -t "$SESSION":$WINDOW_INDEX "lazygit" C-m
 WINDOW_INDEX=$((WINDOW_INDEX + 1))
 SCRIPT
 
-if [[ "$CONFIG_MODE" -eq 0 ]]; then
+if [[ "$DOTFILES_MODE" -eq 0 ]]; then
 cat >> "$TARGET" <<'SCRIPT'
 tmux new-window -t "$SESSION":$WINDOW_INDEX -n term2 -c "$PROJECT_DIR"
 WINDOW_INDEX=$((WINDOW_INDEX + 1))

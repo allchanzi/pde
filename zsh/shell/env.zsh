@@ -1,7 +1,9 @@
 # Environment variables and PATH configuration
 
-# Per-user config prefs (outside the repo-tracked shell config)
-if [[ -f "$HOME/.config/config/prefs" ]]; then
+# Per-user PDE prefs (outside the repo-tracked shell config)
+if [[ -f "$HOME/.config/pde/prefs" ]]; then
+  source "$HOME/.config/pde/prefs"
+elif [[ -f "$HOME/.config/config/prefs" ]]; then
   source "$HOME/.config/config/prefs"
 elif [[ -f "$HOME/.config/shell/prefs" ]]; then
   source "$HOME/.config/shell/prefs"

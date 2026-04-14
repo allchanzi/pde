@@ -12,13 +12,13 @@ while [[ -L "$SCRIPT_PATH" ]]; do
   fi
 done
 CONFIG_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
-CONFIG_PREFS_HELPER="$CONFIG_DIR/bin/config-prefs"
+PDE_PREFS_HELPER="$CONFIG_DIR/bin/pde-prefs"
 RESET_ONLY=0
 
 # shellcheck source=/dev/null
-source "$CONFIG_PREFS_HELPER"
-config_prefs_migrate
-config_prefs_load
+source "$PDE_PREFS_HELPER"
+pde_prefs_migrate
+pde_prefs_load
 
 # Portable sed -i
 _sed_i() {
@@ -81,13 +81,13 @@ wrap_shell_command() {
 current_pref() {
   local key="$1"
   local default="${2:-}"
-  config_prefs_get "$key" "$default"
+  pde_prefs_get "$key" "$default"
 }
 
 save_pref() {
   local key="$1"
   local value="$2"
-  config_prefs_save "$key" "$value"
+  pde_prefs_save "$key" "$value"
 }
 
 usage() {
@@ -97,13 +97,15 @@ usage() {
 }
 
 reset_setup() {
-  local prefs_default="$CONFIG_PREFS_FILE_DEFAULT"
-  local prefs_legacy="$CONFIG_PREFS_FILE_LEGACY"
-  local zellij_dashboard_override="$HOME/.config/zellij/layouts/config.local.kdl"
-  local tmux_dashboard_override="$HOME/.config/tmux/config.local.sh"
+  local prefs_default="$PDE_PREFS_FILE_DEFAULT"
+  local prefs_legacy="$PDE_PREFS_FILE_LEGACY"
+  local prefs_legacy_shell="$PDE_PREFS_FILE_LEGACY_SHELL"
+  local zellij_dashboard_override="$HOME/.config/zellij/layouts/pde.local.kdl"
+  local tmux_dashboard_override="$HOME/.config/tmux/pde.local.sh"
 
   [[ -f "$prefs_default" ]] && rm -f "$prefs_default"
   [[ -f "$prefs_legacy" ]] && rm -f "$prefs_legacy"
+  [[ -f "$prefs_legacy_shell" ]] && rm -f "$prefs_legacy_shell"
   [[ -f "$zellij_dashboard_override" ]] && rm -f "$zellij_dashboard_override"
   [[ -f "$tmux_dashboard_override" ]] && rm -f "$tmux_dashboard_override"
 
@@ -113,6 +115,7 @@ reset_setup() {
   echo "Removed:"
   echo "  $prefs_default"
   echo "  $prefs_legacy"
+  echo "  $prefs_legacy_shell"
   echo "  $zellij_dashboard_override"
   echo "  $tmux_dashboard_override"
   echo ""
@@ -122,7 +125,7 @@ reset_setup() {
 
 write_dashboard_zellij_override() {
   local layout_dir="$HOME/.config/zellij/layouts"
-  local layout_file="$layout_dir/config.local.kdl"
+  local layout_file="$layout_dir/pde.local.kdl"
   local cmd1="${AI_COMMAND_1:-codex}"
   local cmd2="${AI_COMMAND_2:-claude}"
   local ai_profile="${AI_PROFILE:-codex+claude}"
@@ -278,7 +281,7 @@ step_ai() {
       ;;
   esac
 
-  config_prefs_load
+  pde_prefs_load
   write_dashboard_zellij_override
   echo "✓ AI setup: $choice"
 }
@@ -288,7 +291,7 @@ step_features() {
   echo "Step 4/5 — Extra features"
 
   local current="disabled"
-  if config_prefs_bool ENABLE_PANTS 0; then
+  if pde_prefs_bool ENABLE_PANTS 0; then
     current="enabled"
   fi
 
@@ -346,7 +349,7 @@ fi
 
 echo ""
 echo "╭─────────────────────────────╮"
-echo "│     Config Setup Wizard     │"
+echo "│      PDE Setup Wizard       │"
 echo "╰─────────────────────────────╯"
 
 step_install
@@ -360,7 +363,7 @@ step_optional_install
 echo ""
 echo "✓ Setup complete! Restart your terminal."
 echo ""
-echo "Saved prefs: $CONFIG_PREFS_FILE_DEFAULT"
-if [[ -f "$CONFIG_PREFS_FILE_DEFAULT" ]]; then
-  cat "$CONFIG_PREFS_FILE_DEFAULT"
+echo "Saved prefs: $PDE_PREFS_FILE_DEFAULT"
+if [[ -f "$PDE_PREFS_FILE_DEFAULT" ]]; then
+  cat "$PDE_PREFS_FILE_DEFAULT"
 fi

@@ -1,7 +1,7 @@
 # Shell aliases
 
-# Config dashboard
-alias config="$HOME/bin/config"
+# PDE dashboard
+alias pde="$HOME/bin/pde"
 alias ..="cd .."
 alias ...="cd ../.."
 

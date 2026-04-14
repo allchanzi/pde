@@ -13,16 +13,16 @@ while [[ -L "$SCRIPT_PATH" ]]; do
 done
 BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
-CONFIG_PREFS_HELPER="$BIN_DIR/config-prefs"
-if [[ ! -f "$CONFIG_PREFS_HELPER" ]]; then
-  echo "config-prefs helper not found at $CONFIG_PREFS_HELPER" >&2
+PDE_PREFS_HELPER="$BIN_DIR/pde-prefs"
+if [[ ! -f "$PDE_PREFS_HELPER" ]]; then
+  echo "pde-prefs helper not found at $PDE_PREFS_HELPER" >&2
   exit 0
 fi
 
 # shellcheck source=/dev/null
-source "$CONFIG_PREFS_HELPER"
-config_prefs_migrate
-config_prefs_load
+source "$PDE_PREFS_HELPER"
+pde_prefs_migrate
+pde_prefs_load
 
 ensure_brew() {
   if command -v brew >/dev/null 2>&1; then
