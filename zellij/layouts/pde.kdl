@@ -37,4 +37,14 @@ layout {
             args "-lc" "k9s; exec \"$SHELL\" -l"
         }
     }
+    tab name="monitor" {
+        pane split_direction="horizontal" {
+            pane command="zsh" {
+                args "-lc" "if command -v network-ports >/dev/null 2>&1; then network-ports; else bash -lc 'while true; do clear; lsof -nP -iTCP; sleep 2; done'; fi; exec \"$SHELL\" -l"
+            }
+            pane command="zsh" {
+                args "-lc" "btop -p 1; exec \"$SHELL\" -l"
+            }
+        }
+    }
 }

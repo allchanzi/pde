@@ -28,7 +28,7 @@ Usage:
 
 Options:
   --minimal       Generate: terminal, editor, ai, git
-  --full          Generate: terminal, editor, ai, git, docker, k9s, network, monitor
+  --full          Generate: terminal, editor, ai, git, docker, k9s, monitor
   --no-ai         Omit AI window
   --no-docker     Omit docker window
   --base-branch   Branch to use as the base for new worktrees
@@ -192,8 +192,7 @@ generate_zellij_layout() {
 
   if [[ "$LAYOUT" == "full" ]]; then
     tabs+='    tab name="k9s" {\n        pane command="zsh" {\n            args "-lc" "k9s; exec \"$SHELL\" -l"\n        }\n    }\n'
-    tabs+='    tab name="network" {\n        pane split_direction="horizontal" {\n            pane command="zsh" {\n                args "-lc" "if command -v network-ports >/dev/null 2>&1; then network-ports; else bash -lc '\''while true; do clear; lsof -nP -iTCP; sleep 2; done'\''; fi; exec \"$SHELL\" -l"\n            }\n            pane split_direction="vertical" {\n                pane command="zsh" {\n                    args "-lc" "btop -p 1; exec \"$SHELL\" -l"\n                }\n                pane command="zsh" {\n                    args "-lc" "nload; exec \"$SHELL\" -l"\n                }\n            }\n        }\n    }\n'
-    tabs+='    tab name="monitor" {\n        pane command="zsh" {\n            args "-lc" "btop -p 1; exec \"$SHELL\" -l"\n        }\n    }\n'
+    tabs+='    tab name="monitor" {\n        pane split_direction="horizontal" {\n            pane command="zsh" {\n                args "-lc" "if command -v network-ports >/dev/null 2>&1; then network-ports; else bash -lc '\''while true; do clear; lsof -nP -iTCP; sleep 2; done'\''; fi; exec \"$SHELL\" -l"\n            }\n            pane command="zsh" {\n                args "-lc" "btop -p 1; exec \"$SHELL\" -l"\n            }\n        }\n    }\n'
   fi
 
   mkdir -p "$(dirname "$ZELLIJ_LAYOUT")"
@@ -423,16 +422,10 @@ tmux new-window -t "$SESSION":$WINDOW_INDEX -n k9s -c "$PROJECT_DIR"
 tmux send-keys -t "$SESSION":$WINDOW_INDEX "k9s" C-m
 WINDOW_INDEX=$((WINDOW_INDEX + 1))
 
-tmux new-window -t "$SESSION":$WINDOW_INDEX -n network -c "$PROJECT_DIR"
-tmux split-window -v -t "$SESSION":$WINDOW_INDEX
-tmux split-window -h -t "$SESSION":$WINDOW_INDEX.2
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n monitor -c "$PROJECT_DIR"
+tmux split-window -h -t "$SESSION":$WINDOW_INDEX
 tmux send-keys -t "$SESSION":$WINDOW_INDEX.1 "if command -v network-ports >/dev/null 2>&1; then network-ports; else while true; do clear; lsof -nP -iTCP; sleep 2; done; fi" C-m
 tmux send-keys -t "$SESSION":$WINDOW_INDEX.2 "btop -p 1" C-m
-tmux send-keys -t "$SESSION":$WINDOW_INDEX.3 "nload" C-m
-WINDOW_INDEX=$((WINDOW_INDEX + 1))
-
-tmux new-window -t "$SESSION":$WINDOW_INDEX -n monitor -c "$PROJECT_DIR"
-tmux send-keys -t "$SESSION":$WINDOW_INDEX "btop -p 1" C-m
 WINDOW_INDEX=$((WINDOW_INDEX + 1))
 SCRIPT
 fi

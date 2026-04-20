@@ -334,7 +334,7 @@ Layouts: `zellij/layouts/*.kdl`
 
 Zellij panes in these layouts are configured in a tmux-like style:
 
-- `editor`, `ai`, `git`, `docker`, `network`, and `monitor` panes return to a login shell after the foreground command exits
+- `editor`, `ai`, `git`, `docker`, and `monitor` panes return to a login shell after the foreground command exits
 - when `nvim`, `codex`, `claude`, `lazygit`, `btop`, etc. exit, the pane falls back to a login shell instead of staying as a dead command pane
 - close a pane you no longer want with `Ctrl-a q`
 - for machine-local overrides, `pde` prefers `~/.config/zellij/layouts/pde.local.kdl` if it exists
@@ -359,7 +359,7 @@ Usage:
 
 Options:
   --minimal       Generate: terminal, editor, ai, git
-  --full          Generate: terminal, editor, ai, git, docker, k9s, network, monitor
+  --full          Generate: terminal, editor, ai, git, docker, k9s, monitor
   --no-ai         Omit AI window
   --no-docker     Omit docker window
   --base-branch   Default base branch for new worktrees
@@ -396,7 +396,7 @@ When a branch is given the script:
 | Layout | Windows |
 |--------|---------|
 | `--minimal` | terminal, editor (nvim), ai (codex + claude), git (lazygit) |
-| `--full` | + term2, docker (lazydocker), k9s, network (ports/processes + btop + nload), monitor (btop) |
+| `--full` | + term2, docker (lazydocker), k9s, monitor (ports/processes + btop) |
 | `--dotfiles` | terminal, editor, ai, git — no term2, no docker |
 
 Generated Zellij layouts use the same tmux-like pane behavior: interactive tools return to a shell when they exit. To restore native Zellij command panes, edit [bin/pde-create](bin/pde-create) and replace the `...; exec "$SHELL" -l` wrappers with direct `pane command="..."` entries before regenerating the launcher.
@@ -657,7 +657,7 @@ Notes:
 | Codex | AI panes in tmux/Zellij | https://platform.openai.com/docs/codex | Local shell/tooling docs: https://platform.openai.com/docs/guides/code-generation |
 | Claude Code | AI panes in tmux/Zellij | https://docs.anthropic.com/en/docs/claude-code/overview | Installed via `npm install -g @anthropic-ai/claude-code` in this setup |
 | Pants | helper code in `nvim/lua/config/pants*.lua` | https://www.pantsbuild.org/ | Project-specific, but this repo has integrations and shortcuts for it |
-| btop | monitor/network panes | https://github.com/aristocratos/btop#configurability | Most settings can also be changed from the in-app menu |
+| btop | monitor pane | https://github.com/aristocratos/btop#configurability | Most settings can also be changed from the in-app menu |
 
 ---
 

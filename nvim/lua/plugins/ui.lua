@@ -28,16 +28,19 @@ return {
       local prefs = require("config.prefs")
       local pants_enabled = prefs.enabled("ENABLE_PANTS", true)
       local pants = pants_enabled and require("config.pants") or nil
+      local poetry = require("config.poetry")
 
       local python_component = {
         function()
-          if not pants then return "" end
-          local label = pants.current_python_label_if_cached(vim.fn.getcwd())
+          local label = pants and pants.current_python_label_if_cached(vim.fn.getcwd()) or nil
+          if label == nil then
+            label = poetry.current_python_label_if_cached(vim.fn.getcwd())
+          end
           if not label or label == "" then return "" end
           return " " .. label
         end,
         cond = function()
-          return pants and pants.is_available(vim.fn.getcwd()) or false
+          return (pants and pants.is_available(vim.fn.getcwd())) or poetry.is_available(vim.fn.getcwd())
         end,
         color = { fg = "#a6e3a1" },
       }
@@ -63,7 +66,7 @@ return {
 
       -- Refresh lualine when async python discovery finishes
       vim.api.nvim_create_autocmd("User", {
-        pattern = "PantsPythonReady",
+        pattern = { "PantsPythonReady", "PoetryPythonReady" },
         callback = function() lualine.refresh() end,
       })
     end,

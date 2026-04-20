@@ -3,6 +3,39 @@ set -euo pipefail
 
 INTERVAL=2
 ONCE=0
+RESET=$'\033[0m'
+BOLD=$'\033[1m'
+DIM=$'\033[2m'
+CYAN=$'\033[36m'
+GREEN=$'\033[32m'
+YELLOW=$'\033[33m'
+RED=$'\033[31m'
+MAGENTA=$'\033[35m'
+
+color_port() {
+  case "$1" in
+    22|80|443|53|25|110|143|993|995)
+      printf "%s%s%s" "$GREEN" "$1" "$RESET"
+      ;;
+    3000|3001|4200|5173|8000|8080|8443|9000|9090)
+      printf "%s%s%s" "$YELLOW" "$1" "$RESET"
+      ;;
+    *)
+      printf "%s%s%s" "$CYAN" "$1" "$RESET"
+      ;;
+  esac
+}
+
+color_process() {
+  case "$1" in
+    sshd|docker|podman|k9s|nvim|zsh|bash)
+      printf "%s%s%s" "$MAGENTA" "$1" "$RESET"
+      ;;
+    *)
+      printf "%s%s%s" "$BOLD" "$1" "$RESET"
+      ;;
+  esac
+}
 
 usage() {
   cat <<'USAGE'
@@ -34,13 +67,13 @@ render_listening() {
   local out
   out="$(lsof -nP -iTCP -sTCP:LISTEN -FpcLn 2>/dev/null || true)"
 
-  echo "=== LISTENING TCP PORTS ==="
+  printf "%s=== LISTENING TCP PORTS ===%s\n" "$BOLD" "$RESET"
   if [[ -z "$out" ]]; then
-    echo "No listening TCP sockets."
+    printf "%sNo listening TCP sockets.%s\n" "$DIM" "$RESET"
     return
   fi
 
-  printf "%-8s %-8s %-22s %-12s %s\n" "PORT" "PID" "PROCESS" "USER" "BIND"
+  printf "%s%-8s %-8s %-22s %-12s %s%s\n" "$DIM" "PORT" "PID" "PROCESS" "USER" "BIND" "$RESET"
   printf "%s\n" "$out" | awk '
     BEGIN { OFS = "\t" }
     /^p/ { pid = substr($0, 2); next }
@@ -53,7 +86,7 @@ render_listening() {
       print port, pid, command, user, bind
     }
   ' | sort -t $'\t' -n -k1,1 -u | while IFS=$'\t' read -r port pid command user bind; do
-    printf "%-8s %-8s %-22s %-12s %s\n" "$port" "$pid" "$command" "$user" "$bind"
+    printf "%-8s %-8s %-22s %-12s %s\n" "$(color_port "$port")" "$pid" "$(color_process "$command")" "$user" "$bind"
   done
 }
 
@@ -61,13 +94,13 @@ render_established() {
   local out
   out="$(lsof -nP -iTCP -sTCP:ESTABLISHED -FpcLn 2>/dev/null || true)"
 
-  echo "=== ESTABLISHED TCP CONNECTIONS ==="
+  printf "%s=== ESTABLISHED TCP CONNECTIONS ===%s\n" "$BOLD" "$RESET"
   if [[ -z "$out" ]]; then
-    echo "No established TCP connections."
+    printf "%sNo established TCP connections.%s\n" "$DIM" "$RESET"
     return
   fi
 
-  printf "%-8s %-22s %-12s %-30s %s\n" "PID" "PROCESS" "USER" "LOCAL" "REMOTE"
+  printf "%s%-8s %-22s %-12s %-30s %s%s\n" "$DIM" "PID" "PROCESS" "USER" "LOCAL" "REMOTE" "$RESET"
   printf "%s\n" "$out" | awk '
     BEGIN { OFS = "\t" }
     /^p/ { pid = substr($0, 2); next }
@@ -78,7 +111,7 @@ render_established() {
       print pid, command, user, endpoints[1], endpoints[2]
     }
   ' | while IFS=$'\t' read -r pid command user local_addr remote_addr; do
-    printf "%-8s %-22s %-12s %-30s %s\n" "$pid" "$command" "$user" "$local_addr" "$remote_addr"
+    printf "%-8s %-22s %-12s %-30s %s\n" "$pid" "$(color_process "$command")" "$user" "$local_addr" "$remote_addr"
   done
 }
 
@@ -86,7 +119,7 @@ render() {
   if [[ "$ONCE" -eq 0 ]]; then
     clear
   fi
-  echo "Network snapshot: $(date '+%Y-%m-%d %H:%M:%S')"
+  printf "%sNetwork snapshot:%s %s\n" "$BOLD" "$RESET" "$(date '+%Y-%m-%d %H:%M:%S')"
   echo
   render_listening
   echo

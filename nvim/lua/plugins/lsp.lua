@@ -73,10 +73,11 @@ return {
       local prefs = require("config.prefs")
       local pants_enabled = prefs.enabled("ENABLE_PANTS", true)
       local pants = pants_enabled and require("config.pants") or nil
+      local poetry = require("config.poetry")
       local capabilities = require("cmp_nvim_lsp").default_capabilities()
       local python_config_cache = {}
 
-      local function find_pants_python(root)
+      local function find_python_config(root)
         if not root or root == "" then
           return { python_path = nil, extra_paths = {} }
         end
@@ -85,16 +86,29 @@ return {
           return python_config_cache[root]
         end
 
-        if not pants_enabled or not pants or not pants.is_available(root) then
-          python_config_cache[root] = { python_path = nil, extra_paths = {} }
+        if pants_enabled and pants and pants.is_available(root) then
+          local python_path, extra_paths = pants.current_python(root)
+
+          python_config_cache[root] = {
+            python_path = python_path,
+            extra_paths = extra_paths,
+          }
+
           return python_config_cache[root]
         end
-        local python_path, extra_paths = pants.current_python(root)
 
-        python_config_cache[root] = {
-          python_path = python_path,
-          extra_paths = extra_paths,
-        }
+        if poetry.is_available(root) then
+          local python_path, extra_paths = poetry.current_python(root)
+
+          python_config_cache[root] = {
+            python_path = python_path,
+            extra_paths = extra_paths,
+          }
+
+          return python_config_cache[root]
+        end
+
+        python_config_cache[root] = { python_path = nil, extra_paths = {} }
 
         return python_config_cache[root]
       end
@@ -112,7 +126,7 @@ return {
         },
         before_init = function(_, config)
           local root = config.root_dir or vim.fn.getcwd()
-          local python_config = find_pants_python(root)
+          local python_config = find_python_config(root)
           local python_path = python_config.python_path
 
           if python_path then
