@@ -58,6 +58,7 @@ map("n", "<leader>rn", vim.lsp.buf.rename, { desc = "Rename symbol" })
 map("n", "<leader>fR", function()
   require("config.project_replace").open()
 end, { desc = "Project replace" })
+map("n", "<leader>br", "<cmd>Telescope registers<cr>", { desc = "Registers" })
 
 -- Formatting (<leader>cf to avoid conflict with <leader>f Find group)
 map("n", "<leader>cf", function()

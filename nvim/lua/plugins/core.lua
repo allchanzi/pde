@@ -47,12 +47,26 @@ return {
         end,
         desc = "Live grep with path filter",
       },
-      { "<leader>fb", "<cmd>Telescope buffers<cr>",                   desc = "Buffers" },
+      {
+        "<leader>fb",
+        function()
+          require("config.buffers").open_all()
+        end,
+        desc = "Buffers",
+      },
+      {
+        "<leader>fB",
+        function()
+          require("config.buffers").open_current_tab()
+        end,
+        desc = "Current tab buffers",
+      },
       { "<leader>fr", "<cmd>Telescope oldfiles<cr>",                  desc = "Recent files" },
       { "<leader>fs", "<cmd>Telescope grep_string<cr>",               desc = "Grep word under cursor" },
       { "<leader>fc", "<cmd>Telescope current_buffer_fuzzy_find<cr>", desc = "Fuzzy find in buffer" },
       { "<leader>fh", "<cmd>Telescope help_tags<cr>",                 desc = "Help tags" },
       { "<leader>fd", "<cmd>Telescope diagnostics<cr>",               desc = "Diagnostics" },
+      { "<leader>r", "<cmd>Telescope registers<cr>", desc = "Registers" },
       { "<leader>gs", "<cmd>Telescope git_status<cr>",                desc = "Git status" },
       { "<leader>gl", "<cmd>Telescope git_commits<cr>",               desc = "Git log" },
       { "<leader>gc", "<cmd>Telescope git_branches<cr>",              desc = "Git branches" },

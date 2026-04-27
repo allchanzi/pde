@@ -19,16 +19,216 @@ BASE_BRANCH=""
 
 BRANCH=""
 FORCE=0
+DELETE_WORKTREE=0
+SHOW_WORKTREE_ORIGIN=0
+LIST_WORKTREES=0
+LIST_ALL=0
+DELETE_ALL=0
+FROM_BRANCH=""
 
 usage() {
   echo "Usage:"
   echo "  pde"
   echo "  pde dashboard"
   echo "  pde -b <branch>"
+  echo "  pde -b <branch> --from <base-branch>"
+  echo "  pde -d -b <branch>"
+  echo "  pde -d --all"
   echo "  pde -b <branch> -f"
+  echo "  pde --delete-worktree -b <branch>"
+  echo "  pde --worktree-origin -b <branch>"
+  echo "  pde --list"
+  echo "  pde --list-worktrees"
   echo "  pde install"
   echo "  pde install --reset"
   echo "  pde theme"
+}
+
+worktree_path_for_branch() {
+  git worktree list --porcelain | awk -v branch="refs/heads/$1" '
+    $1=="worktree" { path=$2 }
+    $1=="branch" && $2==branch { print path }
+  '
+}
+
+worktree_default_path_for_branch() {
+  local repo_name
+  local safe_branch
+  local worktree_root
+
+  repo_name="$(basename "$MAIN_PROJECT_DIR")"
+  safe_branch="${1//\//-}"
+  worktree_root="$(dirname "$MAIN_PROJECT_DIR")"
+  printf '%s/%s-%s\n' "$worktree_root" "$repo_name" "$safe_branch"
+}
+
+worktree_session_name_for_branch() {
+  local safe_branch
+
+  safe_branch="${1//\//-}"
+  printf '%s-%s\n' "$SESSION_BASE" "$safe_branch"
+}
+
+delete_local_branch_if_requested() {
+  if ! git show-ref --verify --quiet "refs/heads/$1"; then
+    return 0
+  fi
+
+  if [[ "$FORCE" -ne 1 ]]; then
+    echo "Branch '$1' already exists locally. Use -f to recreate it from a different base." >&2
+    exit 1
+  fi
+
+  git branch -D "$1" >/dev/null 2>&1 || {
+    echo "Could not delete local branch '$1'." >&2
+    exit 1
+  }
+}
+
+resolve_base_start_point() {
+  git fetch origin "$1" --prune 2>/dev/null || true
+
+  if git show-ref --verify --quiet "refs/remotes/origin/$1"; then
+    printf 'origin/%s\n' "$1"
+    return 0
+  fi
+
+  if git show-ref --verify --quiet "refs/heads/$1"; then
+    printf '%s\n' "$1"
+    return 0
+  fi
+
+  return 1
+}
+
+write_worktree_metadata() {
+  local worktree_path="$1"
+  local branch="$2"
+  local origin_ref="$3"
+  local origin_kind="$4"
+  local git_dir
+  local metadata_file
+
+  git_dir="$(git -C "$worktree_path" rev-parse --git-dir)"
+  metadata_file="$git_dir/pde-worktree-meta"
+
+  cat > "$metadata_file" <<EOF
+branch=$branch
+origin_ref=$origin_ref
+origin_kind=$origin_kind
+created_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+EOF
+}
+
+show_worktree_origin() {
+  local branch="$1"
+  local worktree_path
+  local git_dir
+  local metadata_file
+  local upstream
+
+  worktree_path="$(worktree_path_for_branch "$branch")"
+  if [[ -z "$worktree_path" ]]; then
+    echo "No worktree found for branch '$branch'." >&2
+    return 1
+  fi
+
+  git_dir="$(git -C "$worktree_path" rev-parse --git-dir)"
+  metadata_file="$git_dir/pde-worktree-meta"
+
+  echo "worktree: $worktree_path"
+  echo "branch:   $branch"
+
+  if [[ -f "$metadata_file" ]]; then
+    grep -E '^(origin_ref|origin_kind|created_at)=' "$metadata_file" | sed 's/^origin_ref=/origin:   /; s/^origin_kind=/kind:     /; s/^created_at=/created:  /'
+    return 0
+  fi
+
+  upstream="$(git -C "$worktree_path" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+  if [[ -n "$upstream" ]]; then
+    echo "origin:   $upstream"
+    echo "kind:     upstream"
+    return 0
+  fi
+
+  echo "origin:   unknown (worktree was created before metadata support)"
+}
+
+delete_worktree() {
+  local branch="$1"
+  local worktree_path
+  local session
+
+  worktree_path="$(worktree_path_for_branch "$branch")"
+  if [[ -z "$worktree_path" ]]; then
+    worktree_path="$(worktree_default_path_for_branch "$branch")"
+  fi
+
+  if [[ ! -e "$worktree_path" ]]; then
+    echo "No worktree path found for branch '$branch'." >&2
+    return 1
+  fi
+
+  session="$(worktree_session_name_for_branch "$branch")"
+  tmux kill-session -t "$session" 2>/dev/null || true
+
+  cd "$MAIN_PROJECT_DIR" || exit 1
+  git worktree remove --force "$worktree_path" 2>/dev/null || true
+  rm -rf "$worktree_path"
+  echo "Removed worktree '$branch' at $worktree_path"
+}
+
+list_worktrees() {
+  git worktree list
+}
+
+list_all() {
+  echo "== tmux sessions =="
+  if command -v tmux >/dev/null 2>&1; then
+    tmux list-sessions -F '#S' 2>/dev/null | grep -E "^${SESSION_BASE}(-|$)" || echo "(none)"
+  else
+    echo "(tmux not installed)"
+  fi
+
+  echo
+  echo "== zellij sessions =="
+  if command -v zellij >/dev/null 2>&1; then
+    zellij list-sessions --short --no-formatting 2>/dev/null | grep -E "^${SESSION_BASE}(-|$)" || echo "(none)"
+  else
+    echo "(zellij not installed)"
+  fi
+
+  echo
+  echo "== git worktrees =="
+  git worktree list || echo "(none)"
+}
+
+delete_all_worktrees() {
+  local current_path
+  local current_branch_ref
+  local current_branch
+  local session
+
+  while IFS=$'\t' read -r current_path current_branch_ref; do
+    if [[ "$current_path" == "$MAIN_PROJECT_DIR" ]]; then
+      continue
+    fi
+
+    current_branch="${current_branch_ref#refs/heads/}"
+    if [[ "$current_branch" != "$current_branch_ref" ]]; then
+      session="$(worktree_session_name_for_branch "$current_branch")"
+      tmux kill-session -t "$session" 2>/dev/null || true
+    fi
+
+    git worktree remove --force "$current_path" 2>/dev/null || true
+    rm -rf "$current_path"
+    echo "Removed worktree at $current_path"
+  done < <(
+    git worktree list --porcelain | awk '
+      $1=="worktree" { path=$2 }
+      $1=="branch" { print path "\t" $2 }
+    '
+  )
 }
 
 case "${1:-}" in
@@ -48,24 +248,64 @@ esac
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -b|--branch)  BRANCH="${2:-}"; shift 2 ;;
+    --from)       FROM_BRANCH="${2:-}"; shift 2 ;;
+    -d|--delete-worktree) DELETE_WORKTREE=1; shift ;;
+    --all) DELETE_ALL=1; shift ;;
     -f|--force)   FORCE=1; shift ;;
+    --worktree-origin) SHOW_WORKTREE_ORIGIN=1; shift ;;
+    --list) LIST_ALL=1; shift ;;
+    --list-worktrees) LIST_WORKTREES=1; shift ;;
     -h|--help)    usage; exit 0 ;;
     *) echo "Unknown argument: $1"; usage; exit 1 ;;
   esac
 done
 
+if [[ -n "$FROM_BRANCH" ]]; then
+  BASE_BRANCH="$FROM_BRANCH"
+fi
+
+cd "$MAIN_PROJECT_DIR" || exit 1
+
+if [[ "$LIST_WORKTREES" -eq 1 ]]; then
+  list_worktrees
+  exit 0
+fi
+
+if [[ "$LIST_ALL" -eq 1 ]]; then
+  list_all
+  exit 0
+fi
+
+if [[ "$DELETE_WORKTREE" -eq 1 ]]; then
+  if [[ "$DELETE_ALL" -eq 1 ]]; then
+    delete_all_worktrees
+    exit 0
+  fi
+
+  if [[ -z "$BRANCH" ]]; then
+    echo "-d/--delete-worktree requires -b <branch>" >&2
+    exit 1
+  fi
+
+  delete_worktree "$BRANCH"
+  exit 0
+fi
+
+if [[ "$SHOW_WORKTREE_ORIGIN" -eq 1 ]]; then
+  if [[ -z "$BRANCH" ]]; then
+    echo "--worktree-origin requires -b <branch>" >&2
+    exit 1
+  fi
+
+  show_worktree_origin "$BRANCH"
+  exit 0
+fi
+
 PROJECT_DIR="$MAIN_PROJECT_DIR"
 SESSION="$SESSION_BASE"
 
 if [[ -n "$BRANCH" ]]; then
-  cd "$MAIN_PROJECT_DIR" || exit 1
-
-  EXISTING_PATH="$(
-    git worktree list --porcelain | awk -v b="refs/heads/$BRANCH" '
-      $1=="worktree" { p=$2 }
-      $1=="branch" && $2==b { print p }
-    '
-  )"
+  EXISTING_PATH="$(worktree_path_for_branch "$BRANCH")"
 
   if [[ -n "$EXISTING_PATH" && "$FORCE" -eq 0 ]]; then
     PROJECT_DIR="$EXISTING_PATH"
@@ -80,28 +320,44 @@ if [[ -n "$BRANCH" ]]; then
     SAFE_BRANCH="${BRANCH//\//-}"
     WORKTREE_ROOT="$(dirname "$MAIN_PROJECT_DIR")"
     WORKTREE_PATH="$WORKTREE_ROOT/${REPO_NAME}-${SAFE_BRANCH}"
+    ORIGIN_REF=""
+    ORIGIN_KIND=""
 
-    git fetch origin "$BRANCH" --prune 2>/dev/null || true
+    if [[ -n "$BASE_BRANCH" ]]; then
+      START_POINT="$(resolve_base_start_point "$BASE_BRANCH")" || {
+        echo "Base branch '$BASE_BRANCH' not found locally or on origin." >&2
+        exit 1
+      }
 
-    if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-      git worktree add "$WORKTREE_PATH" "$BRANCH"
-    elif git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
-      git worktree add "$WORKTREE_PATH" -b "$BRANCH" "origin/$BRANCH"
+      delete_local_branch_if_requested "$BRANCH"
+
+      ORIGIN_REF="$START_POINT"
+      case "$START_POINT" in
+        origin/*) ORIGIN_KIND="base-remote-branch" ;;
+        *) ORIGIN_KIND="base-local-branch" ;;
+      esac
+
+      git worktree add "$WORKTREE_PATH" -b "$BRANCH" "$START_POINT"
     else
-      if [[ -n "$BASE_BRANCH" ]]; then
-        git fetch origin "$BASE_BRANCH" --prune 2>/dev/null || true
-        if git show-ref --verify --quiet "refs/remotes/origin/$BASE_BRANCH"; then
-          git worktree add "$WORKTREE_PATH" -b "$BRANCH" "origin/$BASE_BRANCH"
-        elif git show-ref --verify --quiet "refs/heads/$BASE_BRANCH"; then
-          git worktree add "$WORKTREE_PATH" -b "$BRANCH" "$BASE_BRANCH"
-        else
-          echo "Base branch '$BASE_BRANCH' not found locally or on origin." >&2; exit 1
-        fi
+      git fetch origin "$BRANCH" --prune 2>/dev/null || true
+
+      if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+        ORIGIN_REF="$BRANCH"
+        ORIGIN_KIND="local-branch"
+        git worktree add "$WORKTREE_PATH" "$BRANCH"
+      elif git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+        ORIGIN_REF="origin/$BRANCH"
+        ORIGIN_KIND="remote-branch"
+        git worktree add "$WORKTREE_PATH" -b "$BRANCH" "origin/$BRANCH"
+        git -C "$WORKTREE_PATH" branch --set-upstream-to "origin/$BRANCH" "$BRANCH" >/dev/null 2>&1 || true
       else
+        ORIGIN_REF="$(git rev-parse --abbrev-ref HEAD)"
+        ORIGIN_KIND="current-head"
         git worktree add "$WORKTREE_PATH" -b "$BRANCH"
       fi
     fi
 
+    write_worktree_metadata "$WORKTREE_PATH" "$BRANCH" "$ORIGIN_REF" "$ORIGIN_KIND"
     PROJECT_DIR="$WORKTREE_PATH"
   fi
 

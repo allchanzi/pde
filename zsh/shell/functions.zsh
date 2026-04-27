@@ -94,4 +94,4 @@ fzf-history-run-widget() {
 }
 
 zle -N fzf-history-run-widget
-bindkey '^[h' fzf-history-run-widget
+bindkey '^[H' fzf-history-run-widget

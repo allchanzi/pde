@@ -8,7 +8,11 @@ on_force_close "detach"
 
 keybinds clear-defaults=true {
     normal {
-        // ── Pane navigation (no prefix) — mirrors tmux M-WASD ──
+        // ── Pane navigation (no prefix) — mirrors nvim hjkl ──
+        bind "Alt h" { MoveFocus "Left"; }
+        bind "Alt l" { MoveFocus "Right"; }
+        bind "Alt k" { MoveFocus "Up"; }
+        bind "Alt j" { MoveFocus "Down"; }
         bind "Alt a" { MoveFocus "Left"; }
         bind "Alt d" { MoveFocus "Right"; }
         bind "Alt w" { MoveFocus "Up"; }
@@ -22,6 +26,8 @@ keybinds clear-defaults=true {
         bind "Alt 5" { GoToTab 5; }
         bind "Alt 6" { GoToTab 6; }
         bind "Alt 7" { GoToTab 7; }
+        bind "Alt [" { GoToPreviousTab; }
+        bind "Alt ]" { GoToNextTab; }
         bind "Alt Left"  { GoToPreviousTab; }
         bind "Alt Right" { GoToNextTab; }
 
@@ -98,6 +104,8 @@ keybinds clear-defaults=true {
         bind "x" { CloseTab; SwitchToMode "Normal"; }
         bind "h" "Left" { GoToPreviousTab; SwitchToMode "Normal"; }
         bind "l" "Right" { GoToNextTab; SwitchToMode "Normal"; }
+        bind "[" { GoToPreviousTab; SwitchToMode "Normal"; }
+        bind "]" { GoToNextTab; SwitchToMode "Normal"; }
         bind "r" { SwitchToMode "RenameTab"; }
         bind "s" { ToggleActiveSyncTab; SwitchToMode "Normal"; }
         bind "1" { GoToTab 1; SwitchToMode "Normal"; }
