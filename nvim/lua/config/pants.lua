@@ -250,6 +250,12 @@ local function run_pants(args, opts, on_exit)
   end)
 end
 
+local function emit_python_ready()
+  vim.schedule(function()
+    vim.api.nvim_exec_autocmds("User", { pattern = "PantsPythonReady", modeline = false })
+  end)
+end
+
 local function discover_python_sync(root)
   local venv_root = root .. "/dist/export/python/virtualenvs"
   if vim.fn.isdirectory(venv_root) == 0 then
@@ -277,8 +283,130 @@ local function ensure_python_cache(root)
     python_path = nil,
     extra_paths = {},
     loading = false,
+    export_running = false,
+    export_failed = false,
+    resolve_name = nil,
   }
   return python_cache[root]
+end
+
+local function default_resolve(root)
+  local cache = ensure_python_cache(root)
+  if cache.resolve_name ~= nil then
+    return cache.resolve_name or nil
+  end
+
+  local pants_toml = vim.fs.joinpath(root, "pants.toml")
+  if vim.fn.filereadable(pants_toml) == 0 then
+    cache.resolve_name = false
+    return nil
+  end
+
+  for _, line in ipairs(vim.fn.readfile(pants_toml, "", 160)) do
+    local resolve_name = line:match('^%s*default_resolve%s*=%s*"([^"]+)"')
+    if resolve_name then
+      cache.resolve_name = resolve_name
+      return resolve_name
+    end
+
+    resolve_name = line:match("^%s*default_resolve%s*=%s*'([^']+)'")
+    if resolve_name then
+      cache.resolve_name = resolve_name
+      return resolve_name
+    end
+  end
+
+  cache.resolve_name = false
+  return nil
+end
+
+local function restart_basedpyright(root)
+  local buffers = {}
+
+  for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].filetype == "python" then
+      local path = vim.fs.normalize(vim.api.nvim_buf_get_name(bufnr))
+      if path == root or vim.startswith(path, root .. "/") then
+        table.insert(buffers, bufnr)
+      end
+    end
+  end
+
+  for _, client in ipairs(vim.lsp.get_clients({ name = "basedpyright" })) do
+    if client.config.root_dir == root then
+      vim.lsp.stop_client(client.id)
+    end
+  end
+
+  if vim.tbl_isempty(buffers) then
+    return
+  end
+
+  vim.defer_fn(function()
+    for _, bufnr in ipairs(buffers) do
+      if vim.api.nvim_buf_is_valid(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
+        vim.api.nvim_exec_autocmds("FileType", { buffer = bufnr, modeline = false })
+      end
+    end
+  end, 200)
+end
+
+local function maybe_export_python(root)
+  local cache = ensure_python_cache(root)
+  if cache.export_running or cache.export_failed then
+    return false
+  end
+
+  local resolve_name = default_resolve(root)
+  if not resolve_name then
+    return false
+  end
+
+  cache.loading = true
+  cache.export_running = true
+
+  vim.notify(
+    "Pants Python venv missing. Running export for " .. resolve_name .. "...",
+    vim.log.levels.INFO
+  )
+
+  run_pants({
+    "export",
+    "--py-resolve-format=symlinked_immutable_virtualenv",
+    "--resolve=" .. resolve_name,
+  }, { cwd = root }, function(result)
+    local output = table.concat({
+      result.stdout or "",
+      result.stderr or "",
+    }, "")
+    local python_path, extra_paths = discover_python_sync(root)
+
+    if output ~= "" then
+      store_output("PantsExport Output", output)
+    end
+
+    cache.export_running = false
+
+    if result.code == 0 and python_path then
+      cache.python_path = python_path
+      cache.extra_paths = extra_paths or {}
+      cache.loading = false
+      cache.export_failed = false
+      vim.notify("Pants Python venv ready: " .. resolve_name, vim.log.levels.INFO)
+      emit_python_ready()
+      restart_basedpyright(root)
+      return
+    end
+
+    cache.python_path = false
+    cache.extra_paths = {}
+    cache.loading = false
+    cache.export_failed = true
+    vim.notify("pants export failed. See :PantsOutput", vim.log.levels.WARN)
+    emit_python_ready()
+  end)
+
+  return true
 end
 
 local function ensure_target_cache(root)
@@ -305,15 +433,25 @@ function M.current_python(path)
   end
 
   local cache = ensure_python_cache(root)
-  if cache.python_path ~= nil then
-    return cache.python_path, cache.extra_paths
+  if cache.loading or cache.python_path ~= nil then
+    return cache.python_path or nil, cache.extra_paths
   end
 
   local python_path, extra_paths = discover_python_sync(root)
-  cache.python_path = python_path or false
-  cache.extra_paths = extra_paths or {}
+  if python_path then
+    cache.python_path = python_path
+    cache.extra_paths = extra_paths or {}
+    return python_path, cache.extra_paths
+  end
 
-  return python_path, cache.extra_paths
+  if maybe_export_python(root) then
+    return nil, {}
+  end
+
+  cache.python_path = false
+  cache.extra_paths = {}
+
+  return nil, cache.extra_paths
 end
 
 function M.current_python_label(path)
@@ -351,7 +489,10 @@ function M.invalidate_python_cache(path)
     return
   end
 
-  python_cache[root] = nil
+  local cache = ensure_python_cache(root)
+  cache.python_path = nil
+  cache.extra_paths = {}
+  cache.loading = false
 end
 
 function M.prewarm_python(path)
@@ -365,10 +506,23 @@ function M.prewarm_python(path)
     return
   end
 
+  local python_path, extra_paths = discover_python_sync(root)
+  if python_path then
+    cache.python_path = python_path
+    cache.extra_paths = extra_paths or {}
+    emit_python_ready()
+    return
+  end
+
+  if maybe_export_python(root) then
+    return
+  end
+
   local venv_root = root .. "/dist/export/python/virtualenvs"
   if vim.fn.isdirectory(venv_root) == 0 then
     cache.python_path = false
     cache.extra_paths = {}
+    emit_python_ready()
     return
   end
 
@@ -397,9 +551,7 @@ function M.prewarm_python(path)
     end
 
     cache.loading = false
-    vim.schedule(function()
-      vim.api.nvim_exec_autocmds("User", { pattern = "PantsPythonReady", modeline = false })
-    end)
+    emit_python_ready()
   end)
 end
 
@@ -569,6 +721,31 @@ function M.show_last_output()
   open_command_output(last_output.title or "Pants Output", last_output.lines)
 end
 
+function M.export_python(path)
+  local root = project.pants_root(path or vim.fn.getcwd())
+  if not root then
+    vim.notify("No pants.toml found in current project", vim.log.levels.WARN)
+    return
+  end
+
+  local cache = ensure_python_cache(root)
+  if cache.export_running then
+    vim.notify("pants export already running", vim.log.levels.INFO)
+    return
+  end
+
+  cache.python_path = nil
+  cache.extra_paths = {}
+  cache.loading = false
+  cache.export_failed = false
+
+  if maybe_export_python(root) then
+    return
+  end
+
+  vim.notify("Could not determine Pants default_resolve", vim.log.levels.WARN)
+end
+
 function M.setup_commands()
   vim.api.nvim_create_user_command("PantsInfo", function()
     local root = project.pants_root(vim.fn.getcwd())
@@ -607,6 +784,9 @@ function M.setup_commands()
   end, {})
   vim.api.nvim_create_user_command("PantsOutput", function()
     M.show_last_output()
+  end, {})
+  vim.api.nvim_create_user_command("PantsExportPython", function()
+    M.export_python()
   end, {})
 end
 

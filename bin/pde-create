@@ -385,7 +385,7 @@ list_worktrees() {
 list_all() {
   echo "== tmux sessions =="
   if command -v tmux >/dev/null 2>&1; then
-    tmux list-sessions -F '#S' 2>/dev/null | grep -E "^${SESSION_BASE}(-|$)" || echo "(none)"
+    tmux list-sessions -F '#S' 2>/dev/null | grep -E "^\${SESSION_BASE}(-|$)" || echo "(none)"
   else
     echo "(tmux not installed)"
   fi
@@ -393,7 +393,7 @@ list_all() {
   echo
   echo "== zellij sessions =="
   if command -v zellij >/dev/null 2>&1; then
-    zellij list-sessions --short --no-formatting 2>/dev/null | grep -E "^${SESSION_BASE}(-|$)" || echo "(none)"
+    zellij list-sessions --short --no-formatting 2>/dev/null | grep -E "^\${SESSION_BASE}(-|$)" || echo "(none)"
   else
     echo "(zellij not installed)"
   fi
@@ -409,24 +409,24 @@ delete_all_worktrees() {
   local current_branch
   local session
 
-  while IFS=$'\t' read -r current_path current_branch_ref; do
-    if [[ "$current_path" == "$MAIN_PROJECT_DIR" ]]; then
+  while IFS=\$'\t' read -r current_path current_branch_ref; do
+    if [[ "\$current_path" == "\$MAIN_PROJECT_DIR" ]]; then
       continue
     fi
 
-    current_branch="${current_branch_ref#refs/heads/}"
-    if [[ "$current_branch" != "$current_branch_ref" ]]; then
-      session="$(worktree_session_name_for_branch "$current_branch")"
-      tmux kill-session -t "$session" 2>/dev/null || true
+    current_branch="\${current_branch_ref#refs/heads/}"
+    if [[ "\$current_branch" != "\$current_branch_ref" ]]; then
+      session="\$(worktree_session_name_for_branch "\$current_branch")"
+      tmux kill-session -t "\$session" 2>/dev/null || true
     fi
 
-    git worktree remove --force "$current_path" 2>/dev/null || true
-    rm -rf "$current_path"
-    echo "Removed worktree at $current_path"
+    git worktree remove --force "\$current_path" 2>/dev/null || true
+    rm -rf "\$current_path"
+    echo "Removed worktree at \$current_path"
   done < <(
     git worktree list --porcelain | awk '
-      $1=="worktree" { path=$2 }
-      $1=="branch" { print path "\t" $2 }
+      \$1=="worktree" { path=\$2 }
+      \$1=="branch" { print path "\t" \$2 }
     '
   )
 }
@@ -698,7 +698,9 @@ echo ""
 echo "  launcher  →  $TARGET"
 echo "  layout    →  $ZELLIJ_LAYOUT"
 echo "  project   →  $PROJECT_DIR"
-[[ -n "$BASE_BRANCH" ]] && echo "  base      →  $BASE_BRANCH"
+if [[ -n "$BASE_BRANCH" ]]; then
+  echo "  base      →  $BASE_BRANCH"
+fi
 echo ""
 
 if [[ ${#WARNINGS[@]} -gt 0 ]]; then
@@ -710,4 +712,6 @@ if [[ ${#WARNINGS[@]} -gt 0 ]]; then
 fi
 
 echo "Run:  $COMMAND_NAME"
-[[ -n "$BASE_BRANCH" ]] && echo "      $COMMAND_NAME -b <branch>"
+if [[ -n "$BASE_BRANCH" ]]; then
+  echo "      $COMMAND_NAME -b <branch>"
+fi
