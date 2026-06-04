@@ -58,7 +58,12 @@ if command -v cargo >/dev/null 2>&1; then
   cargo build --release --manifest-path "$CONFIG_DIR/pde_tui/Cargo.toml"
   ln -sf "$CONFIG_DIR/target/release/pde-tui" "$BIN_DIR/pde-tui"
 else
-  echo "❌ cargo not found. Install Rust, then re-run ./install.sh." >&2
+  echo "❌ cargo not found. Install Rust/Cargo, then re-run ./install.sh." >&2
+  echo "Recommended official installer:" >&2
+  echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh" >&2
+  echo '  source "$HOME/.cargo/env"' >&2
+  echo "Then verify:" >&2
+  echo "  cargo --version" >&2
   exit 1
 fi
 
