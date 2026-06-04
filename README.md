@@ -39,8 +39,8 @@ A terminal-first PDE app with a Rust TUI, CLI wrappers, and optional install pre
 ## Quick Start
 
 ```bash
-git clone https://github.com/allc/pde ~/git/personal/pde
-cd ~/git/personal/pde
+git clone https://github.com/allchanzi/pde.git ~/pde
+cd ~/pde
 ./install.sh              # app + default preset
 # optional: ./install.sh --preset allc
 pde
@@ -103,8 +103,8 @@ The optional `allc` preset additionally expects/installs a larger Homebrew-based
 Minimal PDE app + default preset:
 
 ```bash
-git clone https://github.com/allc/pde ~/git/personal/pde
-cd ~/git/personal/pde
+git clone https://github.com/allchanzi/pde.git ~/pde
+cd ~/pde
 ./install.sh
 pde
 ```
@@ -144,8 +144,8 @@ Restart your terminal when done if you installed `allc`.
 From a fresh clone to your first launcher command:
 
 ```bash
-git clone https://github.com/allc/pde ~/git/personal/pde
-cd ~/git/personal/pde
+git clone https://github.com/allchanzi/pde.git ~/pde
+cd ~/pde
 ./install.sh              # app + default preset
 # optional: ./install.sh --preset allc
 pde
@@ -166,7 +166,7 @@ The default preset only links PDE app wrappers. Dotfile symlinks are part of the
 Typical `allc` edit flow:
 
 ```bash
-cd ~/git/personal/pde
+cd ~/pde
 nvim presets/allc/dotfiles/ghostty/config
 ```
 
