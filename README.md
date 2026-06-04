@@ -94,6 +94,20 @@ Default install requirements:
 - Rust/Cargo
 - one multiplexer: `tmux` or `zellij`
 
+If `./install.sh` says that Cargo is missing, install Rust through the official `rustup` installer, then restart your shell:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+cargo --version
+```
+
+On macOS you can also install Rust with Homebrew if you prefer package-manager installs:
+
+```bash
+brew install rust
+```
+
 The optional `allc` preset additionally expects/installs a larger Homebrew-based toolchain, terminal configs, Neovim config, themes, fonts, and shell integrations.
 
 ---
