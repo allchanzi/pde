@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+
+PDE_PREFS_FILE_DEFAULT="${PDE_PREFS_FILE_DEFAULT:-$HOME/.config/pde/prefs}"
+PDE_PREFS_FILE_LEGACY="${PDE_PREFS_FILE_LEGACY:-$HOME/.config/config/prefs}"
+PDE_PREFS_FILE_LEGACY_SHELL="${PDE_PREFS_FILE_LEGACY_SHELL:-$HOME/.config/shell/prefs}"
+
+_pde_prefs_file() {
+  if [[ -f "$PDE_PREFS_FILE_DEFAULT" ]]; then
+    printf '%s\n' "$PDE_PREFS_FILE_DEFAULT"
+  elif [[ -f "$PDE_PREFS_FILE_LEGACY" ]]; then
+    printf '%s\n' "$PDE_PREFS_FILE_LEGACY"
+  elif [[ -f "$PDE_PREFS_FILE_LEGACY_SHELL" ]]; then
+    printf '%s\n' "$PDE_PREFS_FILE_LEGACY_SHELL"
+  else
+    printf '%s\n' "$PDE_PREFS_FILE_DEFAULT"
+  fi
+}
+
+pde_prefs_migrate() {
+  if [[ -f "$PDE_PREFS_FILE_DEFAULT" ]]; then
+    return 0
+  fi
+
+  local source=""
+  if [[ -f "$PDE_PREFS_FILE_LEGACY" ]]; then
+    source="$PDE_PREFS_FILE_LEGACY"
+  elif [[ -f "$PDE_PREFS_FILE_LEGACY_SHELL" ]]; then
+    source="$PDE_PREFS_FILE_LEGACY_SHELL"
+  fi
+
+  if [[ -n "$source" ]]; then
+    mkdir -p "$(dirname "$PDE_PREFS_FILE_DEFAULT")"
+    cp "$source" "$PDE_PREFS_FILE_DEFAULT"
+  fi
+}
+
+pde_prefs_load() {
+  local prefs_file
+  prefs_file="$(_pde_prefs_file)"
+  if [[ -f "$prefs_file" ]]; then
+    # shellcheck source=/dev/null
+    source "$prefs_file"
+  fi
+}
+
+pde_prefs_get() {
+  local key="$1"
+  local default="${2:-}"
+  pde_prefs_load
+  eval "printf '%s\n' \"\${$key:-$default}\""
+}
+
+pde_prefs_save() {
+  local key="$1"
+  local value="$2"
+  local prefs_file="$PDE_PREFS_FILE_DEFAULT"
+  local quoted
+  local tmp
+  local updated=0
+  local line
+
+  pde_prefs_migrate
+  mkdir -p "$(dirname "$prefs_file")"
+  quoted="${value//\'/\'\\\'\'}"
+  tmp="$(mktemp)"
+
+  if [[ -f "$prefs_file" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$line" == "$key="* ]]; then
+        printf "%s='%s'\n" "$key" "$quoted" >> "$tmp"
+        updated=1
+      else
+        printf '%s\n' "$line" >> "$tmp"
+      fi
+    done < "$prefs_file"
+  fi
+
+  if [[ "$updated" -eq 0 ]]; then
+    printf "%s='%s'\n" "$key" "$quoted" >> "$tmp"
+  fi
+
+  mv "$tmp" "$prefs_file"
+}
+
+pde_prefs_bool() {
+  local key="$1"
+  local default="${2:-0}"
+  local value
+
+  value="$(pde_prefs_get "$key" "$default")"
+  case "$value" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}

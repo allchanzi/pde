@@ -1,0 +1,235 @@
+default_shell "zsh"
+pane_frames false
+theme "dotfiles"
+default_layout "default"
+session_serialization false
+mouse_mode true
+on_force_close "detach"
+
+keybinds clear-defaults=true {
+    normal {
+        // ── Pane navigation (no prefix) — mirrors nvim hjkl ──
+        bind "Alt h" { MoveFocus "Left"; }
+        bind "Alt l" { MoveFocus "Right"; }
+        bind "Alt k" { MoveFocus "Up"; }
+        bind "Alt j" { MoveFocus "Down"; }
+        bind "Alt a" { MoveFocus "Left"; }
+        bind "Alt d" { MoveFocus "Right"; }
+        bind "Alt w" { MoveFocus "Up"; }
+        bind "Alt s" { MoveFocus "Down"; }
+
+        // ── Tab switching (no prefix) — mirrors tmux M-1..7 ──
+        bind "Alt 1" { GoToTab 1; }
+        bind "Alt 2" { GoToTab 2; }
+        bind "Alt 3" { GoToTab 3; }
+        bind "Alt 4" { GoToTab 4; }
+        bind "Alt 5" { GoToTab 5; }
+        bind "Alt 6" { GoToTab 6; }
+        bind "Alt 7" { GoToTab 7; }
+        bind "Alt [" { GoToPreviousTab; }
+        bind "Alt ]" { GoToNextTab; }
+        bind "Alt Left"  { GoToPreviousTab; }
+        bind "Alt Right" { GoToNextTab; }
+
+        bind "Ctrl a" { SwitchToMode "Tmux"; }
+    }
+
+    tmux {
+        // ── Send Ctrl-a to the running app ──
+        bind "Ctrl a" { Write 1; SwitchToMode "Normal"; }
+
+        // ── Splits — C-a | and C-a - ──
+        bind "|" { NewPane "Right"; SwitchToMode "Normal"; }
+        bind "-" { NewPane "Down"; SwitchToMode "Normal"; }
+
+        // ── Tabs — mirrors tmux windows ──
+        bind "c" { NewTab; SwitchToMode "Normal"; }
+        bind "x" { CloseTab; SwitchToMode "Normal"; }
+
+        // ── Pane ──
+        bind "q" { CloseFocus; SwitchToMode "Normal"; }
+
+        // ── Session ──
+        bind "Tab" {
+            LaunchOrFocusPlugin "zellij:session-manager" {
+                floating true
+            }
+            SwitchToMode "Normal"
+        }
+        bind "d" { Detach; }
+        bind "X" { Quit; }
+        bind "Q" { Quit; }
+
+        // ── Resize — mirrors tmux C-a + WASD ──
+        // (d = detach, so resize right uses Shift-D)
+        bind "a" { Resize "Increase Left"; SwitchToMode "Normal"; }
+        bind "w" { Resize "Increase Up"; SwitchToMode "Normal"; }
+        bind "s" { Resize "Increase Down"; SwitchToMode "Normal"; }
+        bind "D" { Resize "Increase Right"; SwitchToMode "Normal"; }
+
+        // ── Extra top-level actions shown in the status bar ──
+        bind "p" { SwitchToMode "Pane"; }
+        bind "t" { SwitchToMode "Tab"; }
+        bind "r" { SwitchToMode "Resize"; }
+        bind "m" { SwitchToMode "Move"; }
+        bind "[" { SwitchToMode "Scroll"; }
+        bind "o" { SwitchToMode "Session"; }
+        bind "h" {
+            Run "zsh" "-lc" "pde shortcuts-help all | less -R" {
+                floating true
+                x "8%"
+                y "6%"
+                width "84%"
+                height "88%"
+                name "shortcuts-help"
+                close_on_exit true
+            }
+            SwitchToMode "Normal"
+        }
+        bind "g" {
+            Run "zsh" "-lc" "pde worktree existing" {
+                floating true
+                x "8%"
+                y "6%"
+                width "84%"
+                height "88%"
+                name "worktree-existing"
+                close_on_exit true
+            }
+            SwitchToMode "Normal"
+        }
+        bind "G" {
+            Run "zsh" "-lc" "pde worktree branches" {
+                floating true
+                x "8%"
+                y "6%"
+                width "84%"
+                height "88%"
+                name "worktree-branches"
+                close_on_exit true
+            }
+            SwitchToMode "Normal"
+        }
+        bind "n" {
+            Run "zsh" "-lc" "pde worktree new" {
+                floating true
+                x "8%"
+                y "6%"
+                width "84%"
+                height "88%"
+                name "worktree-new"
+                close_on_exit true
+            }
+            SwitchToMode "Normal"
+        }
+        bind "z" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
+        bind "f" { TogglePaneFrames; SwitchToMode "Normal"; }
+        bind "M" {
+            Run "zsh" "-lc" "pde process-analyze; printf '\\nPress Ctrl-d to close.\\n'; exec \"$SHELL\" -l" {
+                floating true
+                x "10%"
+                y "10%"
+                width "80%"
+                height "80%"
+                name "process-analysis"
+            }
+            SwitchToMode "Normal"
+        }
+        bind "," { SwitchToMode "RenameTab"; }
+        bind "." { SwitchToMode "RenamePane"; }
+        bind "?" {
+            LaunchOrFocusPlugin "zellij:session-manager" {
+                floating true
+            }
+            SwitchToMode "Normal"
+        }
+
+        // ── Snapshot / analysis helpers ──
+    }
+
+    pane {
+        bind "h" "Left" { MoveFocus "Left"; }
+        bind "l" "Right" { MoveFocus "Right"; }
+        bind "k" "Up" { MoveFocus "Up"; }
+        bind "j" "Down" { MoveFocus "Down"; }
+        bind "n" { NewPane; SwitchToMode "Normal"; }
+        bind "r" { NewPane "Right"; SwitchToMode "Normal"; }
+        bind "d" { NewPane "Down"; SwitchToMode "Normal"; }
+        bind "x" { CloseFocus; SwitchToMode "Normal"; }
+        bind "f" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
+        bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
+        bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
+        bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
+        bind "p" { SwitchFocus; SwitchToMode "Normal"; }
+    }
+
+    tab {
+        bind "n" { NewTab; SwitchToMode "Normal"; }
+        bind "x" { CloseTab; SwitchToMode "Normal"; }
+        bind "h" "Left" { GoToPreviousTab; SwitchToMode "Normal"; }
+        bind "l" "Right" { GoToNextTab; SwitchToMode "Normal"; }
+        bind "[" { GoToPreviousTab; SwitchToMode "Normal"; }
+        bind "]" { GoToNextTab; SwitchToMode "Normal"; }
+        bind "r" { SwitchToMode "RenameTab"; }
+        bind "s" { ToggleActiveSyncTab; SwitchToMode "Normal"; }
+        bind "1" { GoToTab 1; SwitchToMode "Normal"; }
+        bind "2" { GoToTab 2; SwitchToMode "Normal"; }
+        bind "3" { GoToTab 3; SwitchToMode "Normal"; }
+        bind "4" { GoToTab 4; SwitchToMode "Normal"; }
+        bind "5" { GoToTab 5; SwitchToMode "Normal"; }
+        bind "6" { GoToTab 6; SwitchToMode "Normal"; }
+        bind "7" { GoToTab 7; SwitchToMode "Normal"; }
+    }
+
+    resize {
+        bind "h" "Left" "a" { Resize "Increase Left"; }
+        bind "l" "Right" "d" { Resize "Increase Right"; }
+        bind "k" "Up" "w" { Resize "Increase Up"; }
+        bind "j" "Down" "s" { Resize "Increase Down"; }
+        bind "-" { Resize "Decrease"; }
+        bind "=" "+" { Resize "Increase"; }
+    }
+
+    move {
+        bind "h" "Left" { MovePane "Left"; SwitchToMode "Normal"; }
+        bind "l" "Right" { MovePane "Right"; SwitchToMode "Normal"; }
+        bind "k" "Up" { MovePane "Up"; SwitchToMode "Normal"; }
+        bind "j" "Down" { MovePane "Down"; SwitchToMode "Normal"; }
+    }
+
+    scroll {
+        bind "j" "Down" { ScrollDown; }
+        bind "k" "Up" { ScrollUp; }
+        bind "d" { HalfPageScrollDown; }
+        bind "u" { HalfPageScrollUp; }
+        bind "PageDown" { PageScrollDown; }
+        bind "PageUp" { PageScrollUp; }
+        bind "g" { ScrollToTop; }
+        bind "G" { ScrollToBottom; }
+        bind "e" { EditScrollback; SwitchToMode "Normal"; }
+    }
+
+    session {
+        bind "d" { Detach; }
+        bind "x" "X" "q" "Q" { Quit; }
+        bind "w" {
+            LaunchOrFocusPlugin "zellij:session-manager" {
+                floating true
+            }
+            SwitchToMode "Normal"
+        }
+    }
+
+    renametab {
+        bind "Esc" { UndoRenameTab; SwitchToMode "Normal"; }
+    }
+
+    renamepane {
+        bind "Esc" { UndoRenamePane; SwitchToMode "Normal"; }
+    }
+
+    shared_except "normal" "locked" {
+        bind "Esc"    { SwitchToMode "Normal"; }
+        bind "Ctrl c" { SwitchToMode "Normal"; }
+    }
+}

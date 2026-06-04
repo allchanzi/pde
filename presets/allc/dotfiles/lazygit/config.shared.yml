@@ -1,0 +1,12 @@
+customCommands:
+  - key: "P"
+    context: "localBranches"
+    description: "Pull origin/development into current branch without rebase"
+    command: "git pull origin development --no-rebase"
+    loadingText: "Pulling origin/development..."
+
+  - key: "O"
+    context: "localBranches"
+    description: "Pull selected branch from origin into current branch without rebase"
+    command: "git pull origin {{.SelectedLocalBranch.Name}} --no-rebase"
+    loadingText: "Pulling selected branch..."

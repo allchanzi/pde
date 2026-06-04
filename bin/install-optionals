@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+PDE_PREFS_HELPER="$BIN_DIR/pde-prefs"
+if [[ ! -f "$PDE_PREFS_HELPER" ]]; then
+  echo "pde-prefs helper not found at $PDE_PREFS_HELPER" >&2
+  exit 0
+fi
+
+# shellcheck source=/dev/null
+source "$PDE_PREFS_HELPER"
+pde_prefs_migrate
+pde_prefs_load
+
+ensure_brew() {
+  if command -v brew >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  elif [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
+  fi
+}
+
+install_npm_package() {
+  local package="$1"
+  if npm list -g --depth=0 "$package" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Installing optional npm package: $package"
+  npm install -g "$package"
+}
+
+main() {
+  local ai_profile="${AI_PROFILE:-}"
+  local cmd1="${AI_COMMAND_1:-}"
+  local cmd2="${AI_COMMAND_2:-}"
+  local tools=()
+  local tool
+
+  if [[ -z "$ai_profile" || "$ai_profile" == "none" || "$ai_profile" == "custom" ]]; then
+    exit 0
+  fi
+
+  for tool in "${cmd1%% *}" "${cmd2%% *}"; do
+    case "$tool" in
+      codex) tools+=("npm:@openai/codex") ;;
+      claude) tools+=("npm:@anthropic-ai/claude-code") ;;
+      ollama) tools+=("brew:ollama") ;;
+    esac
+  done
+
+  if [[ ${#tools[@]} -eq 0 ]]; then
+    exit 0
+  fi
+
+  ensure_brew
+
+  local npm_tools=()
+  local brew_tools=()
+  for tool in "${tools[@]}"; do
+    case "$tool" in
+      npm:*) npm_tools+=("${tool#npm:}") ;;
+      brew:*) brew_tools+=("${tool#brew:}") ;;
+    esac
+  done
+
+  if [[ ${#brew_tools[@]} -gt 0 ]]; then
+    if ! command -v brew >/dev/null 2>&1; then
+      echo "brew is not available; skipping optional brew AI tools: ${brew_tools[*]}" >&2
+    else
+      for tool in "${brew_tools[@]}"; do
+        if brew list --formula "$tool" >/dev/null 2>&1; then
+          continue
+        fi
+        echo "Installing optional brew package: $tool"
+        brew install "$tool"
+      done
+    fi
+  fi
+
+  if [[ ${#npm_tools[@]} -gt 0 ]]; then
+    if ! command -v npm >/dev/null 2>&1; then
+      if ! command -v brew >/dev/null 2>&1; then
+        echo "npm is not available and brew could not be loaded; skipping optional npm AI tools." >&2
+        exit 0
+      fi
+
+      echo "Installing Node.js for optional AI tools..."
+      brew install node
+    fi
+
+    for tool in "${npm_tools[@]}"; do
+      install_npm_package "$tool"
+    done
+  fi
+}
+
+main "$@"

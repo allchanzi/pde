@@ -1,0 +1,50 @@
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="status-bar"
+        }
+    }
+
+    tab name="terminal" focus=true {
+        pane
+    }
+    tab name="editor" {
+        pane command="zsh" {
+            args "-lc" "nvim .; exec \"$SHELL\" -l"
+        }
+    }
+    tab name="ai" {
+        pane split_direction="vertical" {
+            pane command="zsh" {
+                args "-lc" "codex; exec \"$SHELL\" -l"
+            }
+            pane command="zsh" {
+                args "-lc" "claude; exec \"$SHELL\" -l"
+            }
+        }
+    }
+    tab name="git" {
+        pane command="zsh" {
+            args "-lc" "lazygit; exec \"$SHELL\" -l"
+        }
+    }
+    tab name="k9s" {
+        pane command="zsh" {
+            args "-lc" "k9s; exec \"$SHELL\" -l"
+        }
+    }
+    tab name="monitor" {
+        pane split_direction="horizontal" {
+            pane command="zsh" {
+                args "-lc" "if command -v network-ports >/dev/null 2>&1; then network-ports; else bash -lc 'while true; do clear; lsof -nP -iTCP; sleep 2; done'; fi; exec \"$SHELL\" -l"
+            }
+            pane command="zsh" {
+                args "-lc" "btop -p 1; exec \"$SHELL\" -l"
+            }
+        }
+    }
+}
