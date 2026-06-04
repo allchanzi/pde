@@ -1,0 +1,62 @@
+k9s:
+  body:
+    fgColor: "#cdd6f4"
+    bgColor: "#1e1e2e"
+    logoColor: "#89b4fa"
+  info:
+    fgColor: "#cdd6f4"
+    sectionColor: "#89b4fa"
+  help:
+    fgColor: "#cdd6f4"
+    bgColor: "#313244"
+    keyColor: "#89b4fa"
+    numKeyColor: "#f9e2af"
+    sectionColor: "#6c7086"
+  frame:
+    border:
+      fgColor: "#313244"
+      focusColor: "#89b4fa"
+    menu:
+      fgColor: "#cdd6f4"
+      fgStyle: dim
+      keyColor: "#89b4fa"
+      numKeyColor: "#f9e2af"
+    crumbs:
+      fgColor: "#1e1e2e"
+      bgColor: "#89b4fa"
+      activeColor: "#f5c2e7"
+    status:
+      newColor: "#a6e3a1"
+      modifyColor: "#f9e2af"
+      addColor: "#89b4fa"
+      errorColor: "#f38ba8"
+      highlightcolor: "#f5c2e7"
+      killColor: "#6c7086"
+      completedColor: "#94e2d5"
+    title:
+      fgColor: "#cdd6f4"
+      bgColor: "#1e1e2e"
+      highlightColor: "#89b4fa"
+      counterColor: "#f9e2af"
+      filterColor: "#f5c2e7"
+  views:
+    table:
+      fgColor: "#cdd6f4"
+      bgColor: "#1e1e2e"
+      cursorColor: "#45475a"
+      header:
+        fgColor: "#1e1e2e"
+        bgColor: "#89b4fa"
+        sorterColor: "#f9e2af"
+    yaml:
+      keyColor: "#89b4fa"
+      colonColor: "#6c7086"
+      valueColor: "#cdd6f4"
+    logs:
+      fgColor: "#cdd6f4"
+      bgColor: "#1e1e2e"
+      indicator:
+        fgColor: "#89b4fa"
+        bgColor: "#1e1e2e"
+        toggleOnColor: "#a6e3a1"
+        toggleOffColor: "#6c7086"

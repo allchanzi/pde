@@ -1,0 +1,2015 @@
+#!/usr/bin/env python3
+"""Registry-driven project launcher and manager for PDE."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+SUPPORTED_PROJECT_TYPES = ("code", "hardware", "notes")
+HARDWARE_CAPABILITIES = (
+    "files",
+    "docs",
+    "mindmap",
+    "schematic",
+    "pcb",
+    "model3d",
+    "datasheets",
+    "build",
+    "export",
+)
+NOTES_CAPABILITIES = ("files", "docs", "mindmap")
+PREFS_DEFAULT = Path(
+    os.environ.get("PDE_PREFS_FILE_DEFAULT", "~/.config/pde/prefs")
+).expanduser()
+PREFS_LEGACY = Path(
+    os.environ.get("PDE_PREFS_FILE_LEGACY", "~/.config/config/prefs")
+).expanduser()
+PREFS_LEGACY_SHELL = Path(
+    os.environ.get("PDE_PREFS_FILE_LEGACY_SHELL", "~/.config/shell/prefs")
+).expanduser()
+PROJECTS_FILE = Path(
+    os.environ.get("PDE_PROJECTS_FILE", "~/.config/pde/projects.json")
+).expanduser()
+LAYOUT_DIR = Path.home() / ".config" / "pde" / "layouts" / "projects"
+ZELLIJ_LAYOUT_DIR = Path.home() / ".config" / "zellij" / "layouts"
+TMUX_LAYOUT_DIR = Path.home() / ".config" / "tmux"
+PROJECTS_HELP = """Usage:
+  projects
+  projects open <project> [-b <branch>] [--from <base-branch>] [-f]
+  projects list
+  projects register [name] [path] [--type code|hardware|notes]
+  projects delete <project> [--yes] [--keep-launcher]
+  projects info <project>
+  projects run <project> <capability>
+
+Examples:
+  projects
+  projects open my-project -b feature/login
+  projects register amplifier ~/projects/amplifier --type hardware
+  projects run amplifier schematic
+"""
+
+
+@dataclass(slots=True)
+class RuntimePrefs:
+    """Runtime PDE preferences."""
+
+    multiplexer: str = "tmux"
+    ai_profile: str = "codex+claude"
+    ai_command_1: str = "codex"
+    ai_command_2: str = "claude"
+
+
+@dataclass(slots=True)
+class Project:
+    """Project registry entry."""
+
+    slug: str
+    name: str
+    path: str
+    type: str
+    launcher: str | None = None
+    launcher_type: str | None = None
+    base_branch: str | None = None
+    layout_variant: str | None = None
+    tags: list[str] = field(default_factory=list)
+    capabilities: list[str] = field(default_factory=list)
+    commands: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def path_obj(self) -> Path:
+        """Return project path as Path."""
+
+        return Path(self.path).expanduser()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize project to JSON-compatible dict."""
+
+        data = {
+            "slug": self.slug,
+            "name": self.name,
+            "path": self.path,
+            "type": self.type,
+            "tags": self.tags,
+            "capabilities": self.capabilities,
+            "commands": self.commands,
+        }
+        if self.launcher:
+            data["launcher"] = self.launcher
+        if self.launcher_type:
+            data["launcher_type"] = self.launcher_type
+        if self.base_branch:
+            data["base_branch"] = self.base_branch
+        if self.layout_variant:
+            data["layout_variant"] = self.layout_variant
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Project":
+        """Build validated project from raw dict."""
+
+        project_type = str(data.get("type", "")).strip()
+        if project_type not in SUPPORTED_PROJECT_TYPES:
+            raise ValueError(f"Unsupported project type: {project_type or '<missing>'}")
+
+        commands = data.get("commands", {})
+        if not isinstance(commands, dict):
+            raise ValueError("Project commands must be a mapping.")
+
+        capabilities = data.get("capabilities", [])
+        if not isinstance(capabilities, list):
+            raise ValueError("Project capabilities must be a list.")
+
+        slug = str(data.get("slug", "")).strip()
+        name = str(data.get("name", "")).strip()
+        path = str(data.get("path", "")).strip()
+        if not slug or not name or not path:
+            raise ValueError("Projects require slug, name, and path.")
+
+        normalized_commands = {
+            str(key).strip(): str(value).strip()
+            for key, value in commands.items()
+            if str(key).strip() and str(value).strip()
+        }
+        normalized_capabilities = [
+            str(item).strip() for item in capabilities if str(item).strip()
+        ]
+        return cls(
+            slug=slug,
+            name=name,
+            path=path,
+            type=project_type,
+            launcher=str(data.get("launcher", "")).strip() or None,
+            launcher_type=str(data.get("launcher_type", "")).strip() or None,
+            base_branch=str(data.get("base_branch", "")).strip() or None,
+            layout_variant=str(data.get("layout_variant", "")).strip() or None,
+            tags=[
+                str(item).strip()
+                for item in data.get("tags", [])
+                if str(item).strip()
+            ],
+            capabilities=normalized_capabilities,
+            commands=normalized_commands,
+        )
+
+
+@dataclass(slots=True)
+class TabSpec:
+    """Multiplexer tab/window spec."""
+
+    name: str
+    command: str | None = None
+    split_commands: list[str] = field(default_factory=list)
+    focus: bool = False
+
+
+def print_usage() -> None:
+    """Print top-level usage."""
+
+    print(PROJECTS_HELP.rstrip())
+
+
+def fail(message: str) -> None:
+    """Exit with error."""
+
+    raise SystemExit(message)
+
+
+def run_command(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    capture_output: bool = False,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Run subprocess command."""
+
+    return subprocess.run(
+        command,
+        cwd=str(cwd) if cwd else None,
+        capture_output=capture_output,
+        check=check,
+        text=True,
+    )
+
+
+def capture_command(command: list[str], *, cwd: Path | None = None) -> str:
+    """Run command and return stdout."""
+
+    return run_command(command, cwd=cwd, capture_output=True).stdout.strip()
+
+
+def resolve_path(value: str) -> Path:
+    """Resolve user-provided path."""
+
+    expanded = Path(value).expanduser()
+    if expanded.exists():
+        return expanded.resolve()
+    return Path(os.path.abspath(str(expanded)))
+
+
+def slugify(value: str) -> str:
+    """Convert text to slug."""
+
+    normalized = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
+    return normalized or "project"
+
+
+def registry_parent() -> Path:
+    """Return registry parent directory."""
+
+    return PROJECTS_FILE.parent
+
+
+def ensure_registry_exists() -> None:
+    """Create empty registry when missing."""
+
+    if PROJECTS_FILE.exists():
+        return
+    registry_parent().mkdir(parents=True, exist_ok=True)
+    PROJECTS_FILE.write_text(
+        json.dumps({"version": 1, "projects": []}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def load_registry() -> list[Project]:
+    """Load registry from disk."""
+
+    ensure_registry_exists()
+    raw = json.loads(PROJECTS_FILE.read_text(encoding="utf-8"))
+    projects = raw.get("projects", [])
+    if not isinstance(projects, list):
+        fail(f"Invalid registry format in {PROJECTS_FILE}.")
+    try:
+        loaded = [Project.from_dict(project) for project in projects]
+    except ValueError as error:
+        fail(f"Invalid registry entry: {error}")
+    return sorted(loaded, key=lambda project: project.name.lower())
+
+
+def save_registry(projects: list[Project]) -> None:
+    """Persist registry atomically."""
+
+    registry_parent().mkdir(parents=True, exist_ok=True)
+    data = {
+        "version": 1,
+        "projects": [project.to_dict() for project in sorted(projects, key=lambda item: item.name.lower())],
+    }
+    with tempfile.NamedTemporaryFile(
+        "w",
+        delete=False,
+        dir=str(registry_parent()),
+        encoding="utf-8",
+    ) as file_handle:
+        json.dump(data, file_handle, indent=2)
+        file_handle.write("\n")
+    Path(file_handle.name).replace(PROJECTS_FILE)
+
+
+def find_project(projects: list[Project], query: str) -> Project:
+    """Find project by slug or name."""
+
+    normalized = query.strip().lower()
+    matches = [
+        project
+        for project in projects
+        if project.slug.lower() == normalized or project.name.lower() == normalized
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        fail(f"Ambiguous project name: {query}")
+    for project in projects:
+        if normalized in {project.slug.lower(), project.name.lower()}:
+            return project
+    fail(f"Unknown project: {query}")
+
+
+def find_project_or_none(projects: list[Project], query: str) -> Project | None:
+    """Return project or None."""
+
+    normalized = query.strip().lower()
+    for project in projects:
+        if project.slug.lower() == normalized or project.name.lower() == normalized:
+            return project
+    return None
+
+
+def next_unique_slug(projects: list[Project], base: str) -> str:
+    """Generate unique slug."""
+
+    slug = slugify(base)
+    existing = {project.slug for project in projects}
+    if slug not in existing:
+        return slug
+    index = 2
+    while f"{slug}-{index}" in existing:
+        index += 1
+    return f"{slug}-{index}"
+
+
+def resolve_prefs_file() -> Path:
+    """Resolve active prefs file."""
+
+    if PREFS_DEFAULT.exists():
+        return PREFS_DEFAULT
+    if PREFS_LEGACY.exists():
+        return PREFS_LEGACY
+    if PREFS_LEGACY_SHELL.exists():
+        return PREFS_LEGACY_SHELL
+    return PREFS_DEFAULT
+
+
+def parse_prefs() -> RuntimePrefs:
+    """Load PDE prefs."""
+
+    prefs = RuntimePrefs()
+    prefs_file = resolve_prefs_file()
+    if prefs_file.exists():
+        for line in prefs_file.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            try:
+                token = shlex.split(stripped, comments=True, posix=True)[0]
+            except ValueError:
+                continue
+            if "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            match key:
+                case "MULTIPLEXER":
+                    prefs.multiplexer = value or prefs.multiplexer
+                case "AI_PROFILE":
+                    prefs.ai_profile = value or prefs.ai_profile
+                case "AI_COMMAND_1":
+                    prefs.ai_command_1 = value or prefs.ai_command_1
+                case "AI_COMMAND_2":
+                    prefs.ai_command_2 = value or prefs.ai_command_2
+
+    prefs.multiplexer = os.environ.get("MULTIPLEXER", prefs.multiplexer)
+    prefs.ai_profile = os.environ.get("AI_PROFILE", prefs.ai_profile)
+    prefs.ai_command_1 = os.environ.get("AI_COMMAND_1", prefs.ai_command_1)
+    prefs.ai_command_2 = os.environ.get("AI_COMMAND_2", prefs.ai_command_2)
+    if prefs.ai_profile == "none":
+        prefs.ai_command_1 = ""
+        prefs.ai_command_2 = ""
+    return prefs
+
+
+def terminal_shell() -> str:
+    """Return preferred shell."""
+
+    return os.environ.get("SHELL", "/bin/zsh")
+
+
+def shell_wrap(command: str) -> str:
+    """Wrap command so zellij pane returns to shell."""
+
+    return f'{command}; exec "$SHELL" -l'
+
+
+def shell_exec(command: str, *, cwd: Path) -> int:
+    """Execute shell command in cwd."""
+
+    completed = subprocess.run(
+        command,
+        cwd=str(cwd),
+        shell=True,
+        executable=terminal_shell(),
+        check=False,
+    )
+    return completed.returncode
+
+
+def command_exists(command: str) -> bool:
+    """Check whether command exists."""
+
+    return shutil.which(command) is not None
+
+
+def default_files_command(project: Project) -> str:
+    """Return files command for project."""
+
+    if project.commands.get("files"):
+        return project.commands["files"]
+    for binary, command in (
+        ("yazi", "yazi ."),
+        ("lf", "lf"),
+        ("nnn", "nnn ."),
+        ("ranger", "ranger"),
+    ):
+        if command_exists(binary):
+            return command
+    return "nvim ."
+
+
+def default_docs_command(project: Project) -> str:
+    """Return docs command for project."""
+
+    if project.commands.get("docs"):
+        return project.commands["docs"]
+    if project.commands.get("mindmap") and project.type == "hardware":
+        docs_candidates = (
+            project.path_obj / "README.md",
+            project.path_obj / "docs" / "README.md",
+            project.path_obj / "docs" / "index.md",
+        )
+        if not any(candidate.exists() for candidate in docs_candidates):
+            return project.commands["mindmap"]
+    for candidate in (
+        project.path_obj / "README.md",
+        project.path_obj / "docs" / "README.md",
+        project.path_obj / "docs" / "index.md",
+    ):
+        if candidate.exists():
+            return f"nvim {shlex.quote(str(candidate.relative_to(project.path_obj)))}"
+    if project.commands.get("mindmap"):
+        return project.commands["mindmap"]
+    return "nvim ."
+
+
+def default_git_command() -> str:
+    """Return git window command."""
+
+    if command_exists("lazygit"):
+        return "lazygit"
+    return 'git status; printf "\\n"'
+
+
+def default_monitor_tabs() -> list[TabSpec]:
+    """Return extra full-layout tabs."""
+
+    monitor_left = (
+        "if command -v network-ports >/dev/null 2>&1; then "
+        "network-ports; "
+        "else bash -lc 'while true; do clear; lsof -nP -iTCP; sleep 2; done'; "
+        "fi"
+    )
+    return [
+        TabSpec(name="docker", command="lazydocker"),
+        TabSpec(name="k9s", command="k9s"),
+        TabSpec(
+            name="monitor",
+            split_commands=[monitor_left, "btop -p 1"],
+        ),
+    ]
+
+
+def ai_tab(runtime: RuntimePrefs) -> TabSpec | None:
+    """Build AI tab when enabled."""
+
+    if runtime.ai_profile == "none" or not runtime.ai_command_1:
+        return None
+    if runtime.ai_command_2:
+        return TabSpec(
+            name="ai",
+            split_commands=[runtime.ai_command_1, runtime.ai_command_2],
+        )
+    return TabSpec(name="ai", command=runtime.ai_command_1)
+
+
+def project_session_name(project: Project) -> str:
+    """Return base session name."""
+
+    return project.slug
+
+
+def project_tabs(project: Project, runtime: RuntimePrefs, script_path: Path) -> list[TabSpec]:
+    """Build session tabs for project."""
+
+    docs_command = f"{shlex.quote(str(script_path))} open-docs {shlex.quote(project.slug)}"
+    tool_shell_command = (
+        f"{shlex.quote(str(script_path))} tool-shell {shlex.quote(project.slug)}"
+    )
+    match project.type:
+        case "code":
+            tabs = [
+                TabSpec(name="terminal", focus=True),
+                TabSpec(name="editor", command="nvim ."),
+            ]
+            match ai_tab(runtime):
+                case TabSpec() as tab:
+                    tabs.append(tab)
+                case _:
+                    pass
+            tabs.extend(
+                [
+                    TabSpec(name="git", command=default_git_command()),
+                    TabSpec(name="term2"),
+                ]
+            )
+            if project.layout_variant == "full":
+                tabs.extend(default_monitor_tabs())
+            return tabs
+        case "notes":
+            return [
+                TabSpec(name="terminal", focus=True),
+                TabSpec(name="notes", command=docs_command),
+                TabSpec(name="files", command=default_files_command(project)),
+                TabSpec(name="git", command=default_git_command()),
+            ]
+        case "hardware":
+            return [
+                TabSpec(name="files", focus=True, command=default_files_command(project)),
+                TabSpec(name="nvim", command="nvim ."),
+                TabSpec(name="docs", command=docs_command),
+                TabSpec(name="tools", command=tool_shell_command),
+            ]
+        case _:
+            fail(f"Unsupported project type: {project.type}")
+
+
+def custom_zellij_layout(project: Project) -> Path | None:
+    """Return custom zellij layout when present."""
+
+    for candidate in (
+        ZELLIJ_LAYOUT_DIR / f"{project.slug}.local.kdl",
+        ZELLIJ_LAYOUT_DIR / f"{project.slug}.kdl",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def custom_tmux_layout(project: Project) -> Path | None:
+    """Return custom tmux layout when present."""
+
+    for candidate in (
+        TMUX_LAYOUT_DIR / f"{project.slug}.local.sh",
+        TMUX_LAYOUT_DIR / f"{project.slug}.sh",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def zellij_escape(value: str) -> str:
+    """Escape KDL string."""
+
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def write_zellij_layout(tabs: list[TabSpec], session_name: str) -> Path:
+    """Write zellij layout for project session."""
+
+    LAYOUT_DIR.mkdir(parents=True, exist_ok=True)
+    layout_path = LAYOUT_DIR / f"{session_name}.kdl"
+    lines = [
+        "layout {",
+        "    default_tab_template {",
+        '        pane size=1 borderless=true {',
+        '            plugin location="tab-bar"',
+        "        }",
+        "        children",
+        '        pane size=2 borderless=true {',
+        '            plugin location="status-bar"',
+        "        }",
+        "    }",
+        "",
+    ]
+    for tab in tabs:
+        focus_suffix = " focus=true" if tab.focus else ""
+        lines.append(f'    tab name="{tab.name}"{focus_suffix} {{')
+        if tab.split_commands:
+            lines.append('        pane split_direction="vertical" {')
+            for command in tab.split_commands:
+                wrapped = zellij_escape(shell_wrap(command))
+                lines.extend(
+                    [
+                        '            pane command="zsh" {',
+                        f'                args "-lc" "{wrapped}"',
+                        "            }",
+                    ]
+                )
+            lines.append("        }")
+        elif tab.command:
+            wrapped = zellij_escape(shell_wrap(tab.command))
+            lines.extend(
+                [
+                    '        pane command="zsh" {',
+                    f'            args "-lc" "{wrapped}"',
+                    "        }",
+                ]
+            )
+        else:
+            lines.append("        pane")
+        lines.append("    }")
+    lines.append("}")
+    layout_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return layout_path
+
+
+def zellij_session_exists(session_name: str) -> bool:
+    """Check zellij session presence."""
+
+    completed = run_command(
+        ["zellij", "list-sessions", "--short", "--no-formatting"],
+        capture_output=True,
+        check=False,
+    )
+    return session_name in completed.stdout.splitlines()
+
+
+def shorten_zellij_session_name(value: str) -> str:
+    """Shorten zellij session name."""
+
+    max_length = 24
+    if len(value) <= max_length:
+        return value
+    import hashlib
+
+    hash_suffix = hashlib.sha1(value.encode("utf-8")).hexdigest()[:8]
+    prefix_length = max_length - len(hash_suffix) - 1
+    return f"{value[:prefix_length]}-{hash_suffix}"
+
+
+def tmux_has_session(session_name: str) -> bool:
+    """Check tmux session presence."""
+
+    completed = run_command(
+        ["tmux", "has-session", "-t", session_name],
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+def active_tmux_sessions() -> list[str]:
+    """Return active tmux session names."""
+
+    completed = run_command(
+        ["tmux", "list-sessions", "-F", "#S"],
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return []
+    return sorted({line.strip() for line in completed.stdout.splitlines() if line.strip()})
+
+
+def active_zellij_sessions() -> list[str]:
+    """Return active zellij session names."""
+
+    completed = run_command(
+        ["zellij", "list-sessions", "--short", "--no-formatting"],
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return []
+    return sorted({line.strip() for line in completed.stdout.splitlines() if line.strip()})
+
+
+def configure_tmux_window(
+    session_name: str,
+    index: int,
+    tab: TabSpec,
+    project_dir: Path,
+) -> None:
+    """Configure tmux window contents."""
+
+    target = f"{session_name}:{index}"
+    if tab.split_commands:
+        run_command(["tmux", "split-window", "-h", "-t", target, "-c", str(project_dir)])
+        run_command(["tmux", "send-keys", "-t", f"{target}.1", tab.split_commands[0], "C-m"])
+        run_command(["tmux", "send-keys", "-t", f"{target}.2", tab.split_commands[1], "C-m"])
+        return
+    if tab.command:
+        run_command(["tmux", "send-keys", "-t", target, tab.command, "C-m"])
+
+
+def run_custom_tmux_layout(project: Project, session_name: str, project_dir: Path) -> bool:
+    """Run custom tmux layout when configured."""
+
+    match custom_tmux_layout(project):
+        case Path() as layout_path:
+            command = " && ".join(
+                (
+                    f"source {shlex.quote(str(layout_path))}",
+                    "declare -F setup_tmux_layout >/dev/null 2>&1",
+                    f"setup_tmux_layout {shlex.quote(session_name)} {shlex.quote(str(project_dir))}",
+                )
+            )
+            completed = subprocess.run(
+                command,
+                shell=True,
+                executable="/bin/bash",
+                check=False,
+            )
+            return completed.returncode == 0
+        case _:
+            return False
+
+
+def open_in_tmux(
+    project: Project,
+    session_name: str,
+    project_dir: Path,
+    tabs: list[TabSpec],
+) -> None:
+    """Open project in tmux."""
+
+    attach_command = (
+        ["tmux", "switch-client", "-t", session_name]
+        if os.environ.get("TMUX")
+        else ["tmux", "attach-session", "-t", session_name]
+    )
+    if tmux_has_session(session_name):
+        os.execvp("tmux", attach_command)
+    if run_custom_tmux_layout(project, session_name, project_dir):
+        os.execvp("tmux", attach_command)
+    first_tab, *other_tabs = tabs
+    run_command(
+        [
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            session_name,
+            "-n",
+            first_tab.name,
+            "-c",
+            str(project_dir),
+        ]
+    )
+    configure_tmux_window(session_name, 1, first_tab, project_dir)
+    for index, tab in enumerate(other_tabs, start=2):
+        run_command(
+            [
+                "tmux",
+                "new-window",
+                "-t",
+                f"{session_name}:{index}",
+                "-n",
+                tab.name,
+                "-c",
+                str(project_dir),
+            ]
+        )
+        configure_tmux_window(session_name, index, tab, project_dir)
+    run_command(["tmux", "select-window", "-t", f"{session_name}:1"])
+    os.execvp("tmux", attach_command)
+
+
+def open_in_zellij(session_name: str, project_dir: Path, layout_path: Path) -> None:
+    """Open project in zellij."""
+
+    short_session = shorten_zellij_session_name(session_name)
+    if os.environ.get("ZELLIJ"):
+        os.execvp(
+            "zellij",
+            [
+                "zellij",
+                "action",
+                "switch-session",
+                short_session,
+                "-c",
+                str(project_dir),
+                "-l",
+                str(layout_path),
+            ],
+        )
+    if zellij_session_exists(short_session):
+        os.execvp("zellij", ["zellij", "attach", short_session])
+    os.chdir(project_dir)
+    os.execvp("zellij", ["zellij", "-s", short_session, "-n", str(layout_path)])
+
+
+def ensure_project_path(project: Project) -> None:
+    """Ensure project path exists."""
+
+    if project.path_obj.exists():
+        return
+    fail(f"Project path does not exist: {project.path_obj}")
+
+
+def is_git_repo(path: Path) -> bool:
+    """Check git repository presence."""
+
+    completed = run_command(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=path,
+        check=False,
+        capture_output=True,
+    )
+    return completed.returncode == 0 and completed.stdout.strip() == "true"
+
+
+def git_worktree_pairs(path: Path) -> list[tuple[str, str]]:
+    """Return worktree path/branch pairs."""
+
+    output = capture_command(["git", "worktree", "list", "--porcelain"], cwd=path)
+    current_path = ""
+    pairs: list[tuple[str, str]] = []
+    for line in output.splitlines():
+        if line.startswith("worktree "):
+            current_path = line.removeprefix("worktree ").strip()
+            continue
+        if line.startswith("branch "):
+            pairs.append((current_path, line.removeprefix("branch ").strip()))
+    return pairs
+
+
+def worktree_path_for_branch(path: Path, branch: str) -> Path | None:
+    """Return existing worktree path for branch."""
+
+    target_branch = f"refs/heads/{branch}"
+    for current_path, current_branch in git_worktree_pairs(path):
+        if current_branch == target_branch:
+            return Path(current_path)
+    return None
+
+
+def worktree_default_path(path: Path, branch: str) -> Path:
+    """Return default worktree path."""
+
+    safe_branch = branch.replace("/", "-")
+    return path.parent / f"{path.name}-{safe_branch}"
+
+
+def worktree_session_name(project: Project, branch: str) -> str:
+    """Return session name for worktree."""
+
+    safe_branch = branch.replace("/", "-")
+    return f"{project_session_name(project)}-{safe_branch}"
+
+
+def project_session_names(project: Project) -> list[str]:
+    """Return possible session names for project."""
+
+    sessions = {project_session_name(project)}
+    if not project.path_obj.exists() or not is_git_repo(project.path_obj):
+        return sorted(sessions)
+    for _, current_branch in git_worktree_pairs(project.path_obj):
+        if not current_branch.startswith("refs/heads/"):
+            continue
+        sessions.add(worktree_session_name(project, current_branch.removeprefix("refs/heads/")))
+    return sorted(sessions)
+
+
+def project_active_session_labels(
+    project: Project,
+    tmux_sessions: list[str],
+    zellij_sessions: list[str],
+) -> list[str]:
+    """Return formatted active session labels for project."""
+
+    base_session = project_session_name(project)
+    expected_tmux = set(project_session_names(project))
+    expected_zellij = {shorten_zellij_session_name(session) for session in expected_tmux}
+
+    matching_tmux = sorted(
+        {
+            session
+            for session in tmux_sessions
+            if session in expected_tmux or session == base_session or session.startswith(f"{base_session}-")
+        }
+    )
+    matching_zellij = sorted(
+        {
+            session
+            for session in zellij_sessions
+            if session in expected_zellij
+            or session == shorten_zellij_session_name(base_session)
+            or session.startswith(f"{shorten_zellij_session_name(base_session)}-")
+        }
+    )
+
+    labels: list[str] = []
+    if matching_tmux:
+        labels.append(f"tmux:{','.join(matching_tmux)}")
+    if matching_zellij:
+        labels.append(f"zellij:{','.join(matching_zellij)}")
+    return labels
+
+
+def resolve_base_start_point(path: Path, branch: str) -> str:
+    """Resolve local or remote base branch."""
+
+    run_command(["git", "fetch", "origin", branch, "--prune"], cwd=path, check=False)
+    if run_command(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{branch}"],
+        cwd=path,
+        check=False,
+    ).returncode == 0:
+        return f"origin/{branch}"
+    if run_command(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=path,
+        check=False,
+    ).returncode == 0:
+        return branch
+    return ""
+
+
+def detected_base_branch(path: Path) -> str:
+    """Detect likely default branch for repository."""
+
+    origin_head = run_command(
+        ["git", "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+        cwd=path,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    if origin_head.startswith("origin/"):
+        return origin_head.removeprefix("origin/")
+
+    current_head = run_command(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=path,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    if current_head and current_head != "HEAD":
+        return current_head
+
+    for candidate in ("main", "master", "develop"):
+        if resolve_base_start_point(path, candidate):
+            return candidate
+    return ""
+
+
+def resolved_project_base_start_point(path: Path, base_branch: str) -> str:
+    """Resolve configured base branch or fall back to detected default."""
+
+    if start_point := resolve_base_start_point(path, base_branch):
+        return start_point
+
+    if detected_branch := detected_base_branch(path):
+        if detected_branch != base_branch:
+            if start_point := resolve_base_start_point(path, detected_branch):
+                print(
+                    (
+                        f"Warning: configured base branch '{base_branch}' was not found. "
+                        f"Using detected branch '{detected_branch}' instead."
+                    ),
+                    file=sys.stderr,
+                )
+                return start_point
+
+    fail(f"Base branch '{base_branch}' not found locally or on origin.")
+
+
+def delete_local_branch_if_requested(path: Path, branch: str, force: bool) -> None:
+    """Delete local branch when force-recreating worktree."""
+
+    if run_command(
+        ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+        cwd=path,
+        check=False,
+    ).returncode != 0:
+        return
+    if not force:
+        fail(
+            f"Branch '{branch}' already exists locally. Use -f to recreate it from a different base."
+        )
+    run_command(["git", "branch", "-D", branch], cwd=path)
+
+
+def local_branch_exists(path: Path, branch: str) -> bool:
+    """Return whether local branch exists."""
+
+    return (
+        run_command(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+            cwd=path,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def git_dir_for_path(path: Path) -> Path:
+    """Resolve git dir path."""
+
+    git_dir = capture_command(["git", "-C", str(path), "rev-parse", "--git-dir"])
+    candidate = Path(git_dir)
+    if candidate.is_absolute():
+        return candidate
+    return path / candidate
+
+
+def write_worktree_metadata(
+    worktree_path: Path,
+    branch: str,
+    origin_ref: str,
+    origin_kind: str,
+) -> None:
+    """Persist worktree metadata."""
+
+    metadata_path = git_dir_for_path(worktree_path) / "pde-worktree-meta"
+    metadata_path.write_text(
+        "\n".join(
+            (
+                f"branch={branch}",
+                f"origin_ref={origin_ref}",
+                f"origin_kind={origin_kind}",
+                f"created_at={datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def show_worktree_origin(path: Path, branch: str) -> None:
+    """Print worktree origin details."""
+
+    current_path = worktree_path_for_branch(path, branch)
+    if current_path is None:
+        fail(f"No worktree found for branch '{branch}'.")
+    metadata_path = git_dir_for_path(current_path) / "pde-worktree-meta"
+    print(f"worktree: {current_path}")
+    print(f"branch:   {branch}")
+    if metadata_path.exists():
+        values: dict[str, str] = {}
+        for line in metadata_path.read_text(encoding="utf-8").splitlines():
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key] = value
+        if values.get("origin_ref"):
+            print(f"origin:   {values['origin_ref']}")
+        if values.get("origin_kind"):
+            print(f"kind:     {values['origin_kind']}")
+        if values.get("created_at"):
+            print(f"created:  {values['created_at']}")
+        return
+    upstream = run_command(
+        [
+            "git",
+            "-C",
+            str(current_path),
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    if upstream:
+        print(f"origin:   {upstream}")
+        print("kind:     upstream")
+        return
+    print("origin:   unknown (worktree was created before metadata support)")
+
+
+def delete_worktree(path: Path, branch: str) -> None:
+    """Delete worktree for branch."""
+
+    current_path = worktree_path_for_branch(path, branch)
+    if current_path is None:
+        current_path = worktree_default_path(path, branch)
+    if not current_path.exists():
+        fail(f"No worktree path found for branch '{branch}'.")
+    run_command(["git", "worktree", "remove", "--force", str(current_path)], cwd=path, check=False)
+    shutil.rmtree(current_path, ignore_errors=True)
+    print(f"Removed worktree '{branch}' at {current_path}")
+
+
+def project_dir_for_code_open(
+    project: Project,
+    branch: str | None,
+    from_branch: str | None,
+    force: bool,
+) -> tuple[Path, str]:
+    """Resolve code project directory and session."""
+
+    ensure_project_path(project)
+    if not is_git_repo(project.path_obj):
+        if branch:
+            fail(f"Project '{project.name}' is not a git repository.")
+        return project.path_obj, project_session_name(project)
+    if not branch:
+        return project.path_obj, project_session_name(project)
+
+    existing_path = worktree_path_for_branch(project.path_obj, branch)
+    if existing_path and not force:
+        return existing_path, worktree_session_name(project, branch)
+
+    if existing_path and force:
+        run_command(["git", "worktree", "remove", "--force", str(existing_path)], cwd=project.path_obj, check=False)
+        shutil.rmtree(existing_path, ignore_errors=True)
+
+    worktree_path = worktree_default_path(project.path_obj, branch)
+    origin_ref = ""
+    origin_kind = ""
+    base_branch = from_branch or project.base_branch
+
+    if base_branch:
+        start_point = resolved_project_base_start_point(project.path_obj, base_branch)
+        match local_branch_exists(project.path_obj, branch):
+            case True if not force:
+                origin_ref = branch
+                origin_kind = "local-branch"
+                run_command(
+                    ["git", "worktree", "add", str(worktree_path), branch],
+                    cwd=project.path_obj,
+                )
+            case _:
+                delete_local_branch_if_requested(project.path_obj, branch, force)
+                origin_ref = start_point
+                origin_kind = (
+                    "base-remote-branch"
+                    if start_point.startswith("origin/")
+                    else "base-local-branch"
+                )
+                run_command(
+                    ["git", "worktree", "add", str(worktree_path), "-b", branch, start_point],
+                    cwd=project.path_obj,
+                )
+    else:
+        run_command(["git", "fetch", "origin", branch, "--prune"], cwd=project.path_obj, check=False)
+        if local_branch_exists(project.path_obj, branch):
+            origin_ref = branch
+            origin_kind = "local-branch"
+            run_command(["git", "worktree", "add", str(worktree_path), branch], cwd=project.path_obj)
+        elif run_command(
+            ["git", "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{branch}"],
+            cwd=project.path_obj,
+            check=False,
+        ).returncode == 0:
+            origin_ref = f"origin/{branch}"
+            origin_kind = "remote-branch"
+            run_command(
+                ["git", "worktree", "add", str(worktree_path), "-b", branch, f"origin/{branch}"],
+                cwd=project.path_obj,
+            )
+            run_command(
+                [
+                    "git",
+                    "-C",
+                    str(worktree_path),
+                    "branch",
+                    "--set-upstream-to",
+                    f"origin/{branch}",
+                    branch,
+                ],
+                check=False,
+            )
+        else:
+            origin_ref = capture_command(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=project.path_obj)
+            origin_kind = "current-head"
+            run_command(
+                ["git", "worktree", "add", str(worktree_path), "-b", branch],
+                cwd=project.path_obj,
+            )
+
+    write_worktree_metadata(worktree_path, branch, origin_ref, origin_kind)
+    return worktree_path, worktree_session_name(project, branch)
+
+
+def maybe_delegate_to_external_launcher(
+    project: Project,
+    *,
+    branch: str | None,
+    from_branch: str | None,
+    force: bool,
+    list_worktrees: bool,
+    delete_worktree_flag: bool,
+    worktree_origin_flag: bool,
+) -> None:
+    """Delegate open to external launcher when configured."""
+
+    if project.launcher_type != "external" or not project.launcher:
+        return
+    launcher_command = project.launcher
+    launcher_path = (
+        str(Path(launcher_command).expanduser())
+        if os.path.sep in launcher_command
+        else launcher_command
+    )
+    executable = (
+        launcher_path
+        if os.path.sep in launcher_command
+        else shutil.which(launcher_path)
+    )
+    if executable is None or (os.path.sep in launcher_command and not Path(executable).exists()):
+        fail(f"Configured launcher not found: {launcher_command}")
+    arguments = [launcher_path]
+    if branch:
+        arguments.extend(["-b", branch])
+    if from_branch:
+        arguments.extend(["--from", from_branch])
+    if force:
+        arguments.append("-f")
+    if list_worktrees:
+        arguments.append("--list-worktrees")
+    if delete_worktree_flag:
+        arguments.append("--delete-worktree")
+    if worktree_origin_flag:
+        arguments.append("--worktree-origin")
+    os.execvp(launcher_path, arguments)
+
+
+def list_projects(projects: list[Project]) -> None:
+    """Print projects table."""
+
+    if not projects:
+        print(f"No projects registered yet. Registry: {PROJECTS_FILE}")
+        return
+    tmux_sessions = active_tmux_sessions()
+    zellij_sessions = active_zellij_sessions()
+    sessions_by_slug = {
+        project.slug: ", ".join(project_active_session_labels(project, tmux_sessions, zellij_sessions)) or "-"
+        for project in projects
+    }
+    name_width = max(len(project.name) for project in projects)
+    slug_width = max(len(project.slug) for project in projects)
+    type_width = max(len(project.type) for project in projects)
+    sessions_width = max(len("SESSIONS"), *(len(sessions_by_slug[project.slug]) for project in projects))
+    print(
+        f"{'NAME':<{name_width}}  {'SLUG':<{slug_width}}  "
+        f"{'TYPE':<{type_width}}  {'SESSIONS':<{sessions_width}}  PATH"
+    )
+    for project in projects:
+        print(
+            f"{project.name:<{name_width}}  {project.slug:<{slug_width}}  "
+            f"{project.type:<{type_width}}  {sessions_by_slug[project.slug]:<{sessions_width}}  {project.path}"
+        )
+
+
+def print_project_info(project: Project) -> None:
+    """Print project details."""
+
+    sessions = project_active_session_labels(
+        project,
+        active_tmux_sessions(),
+        active_zellij_sessions(),
+    )
+    print(f"name:         {project.name}")
+    print(f"slug:         {project.slug}")
+    print(f"type:         {project.type}")
+    print(f"path:         {project.path}")
+    print(f"sessions:     {', '.join(sessions) if sessions else '-'}")
+    if project.base_branch:
+        print(f"base_branch:  {project.base_branch}")
+    if project.layout_variant:
+        print(f"layout:       {project.layout_variant}")
+    if project.launcher:
+        print(f"launcher:     {project.launcher}")
+    if project.capabilities:
+        print(f"capabilities: {', '.join(project.capabilities)}")
+    if project.commands:
+        print("commands:")
+        for capability, command in project.commands.items():
+            print(f"  {capability}: {command}")
+
+
+def print_project_inspect_json(project: Project) -> None:
+    """Print project details as JSON for TUI helpers."""
+
+    tmux_sessions = active_tmux_sessions()
+    zellij_sessions = active_zellij_sessions()
+    base_session = project_session_name(project)
+    rows: list[dict[str, Any]] = [
+        {
+            "kind": "main",
+            "label": "main workspace",
+            "branch": None,
+            "path": str(project.path_obj),
+            "session_name": base_session,
+            "tmux_active": base_session in tmux_sessions,
+            "zellij_session_name": shorten_zellij_session_name(base_session),
+            "zellij_active": shorten_zellij_session_name(base_session) in zellij_sessions,
+        }
+    ]
+
+    if project.path_obj.exists() and project.type == "code" and is_git_repo(project.path_obj):
+        root_path = str(project.path_obj.resolve())
+        for current_path, current_branch in git_worktree_pairs(project.path_obj):
+            if current_path == root_path or not current_branch.startswith("refs/heads/"):
+                continue
+            branch = current_branch.removeprefix("refs/heads/")
+            session_name = worktree_session_name(project, branch)
+            rows.append(
+                {
+                    "kind": "worktree",
+                    "label": branch,
+                    "branch": branch,
+                    "path": current_path,
+                    "session_name": session_name,
+                    "tmux_active": session_name in tmux_sessions,
+                    "zellij_session_name": shorten_zellij_session_name(session_name),
+                    "zellij_active": shorten_zellij_session_name(session_name) in zellij_sessions,
+                }
+            )
+
+    print(
+        json.dumps(
+            {
+                "project": {
+                    "name": project.name,
+                    "slug": project.slug,
+                    "type": project.type,
+                    "path": project.path,
+                    "base_branch": project.base_branch,
+                    "layout_variant": project.layout_variant,
+                    "launcher": project.launcher,
+                    "capabilities": project.capabilities,
+                },
+                "rows": rows,
+            }
+        )
+    )
+
+
+def list_picker_lines(projects: list[Project]) -> list[str]:
+    """Return picker display lines."""
+
+    return [
+        f"{project.slug}\t[{project.type}]\t{project.name}\t{project.path}"
+        for project in projects
+    ]
+
+
+def pick_one_from_list(prompt: str, lines: list[str]) -> str:
+    """Pick one value using fzf or numbered fallback."""
+
+    if not lines:
+        fail("No projects to choose from.")
+    if command_exists("fzf"):
+        completed = subprocess.run(
+            [
+                "fzf",
+                "--prompt",
+                f"  {prompt}: ",
+                "--pointer",
+                "▶",
+                "--highlight-line",
+                "--no-info",
+                "--height",
+                "~14",
+                "--border",
+                "rounded",
+            ],
+            input="\n".join(lines),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0 or not completed.stdout.strip():
+            fail("Selection cancelled.")
+        return completed.stdout.strip()
+    for index, line in enumerate(lines, start=1):
+        print(f"{index:>2}. {line}")
+    choice = input(f"{prompt} [1-{len(lines)}]: ").strip()
+    if not choice.isdigit():
+        fail("Invalid selection.")
+    selected = int(choice)
+    if selected < 1 or selected > len(lines):
+        fail("Invalid selection.")
+    return lines[selected - 1]
+
+
+def pick_many_from_list(prompt: str, lines: list[str], defaults: list[str]) -> list[str]:
+    """Pick multiple values."""
+
+    if command_exists("fzf"):
+        completed = subprocess.run(
+            [
+                "fzf",
+                "--multi",
+                "--prompt",
+                f"  {prompt}: ",
+                "--pointer",
+                "▶",
+                "--marker",
+                "✓",
+                "--highlight-line",
+                "--no-info",
+                "--height",
+                "~14",
+                "--border",
+                "rounded",
+            ],
+            input="\n".join(lines),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0 or not completed.stdout.strip():
+            return defaults
+        return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    print(f"{prompt}: {', '.join(lines)}")
+    entered = input(
+        f"Comma-separated values [{', '.join(defaults)}]: "
+    ).strip()
+    if not entered:
+        return defaults
+    selected = [item.strip() for item in entered.split(",") if item.strip()]
+    invalid = [item for item in selected if item not in lines]
+    if invalid:
+        fail(f"Unknown capabilities: {', '.join(invalid)}")
+    return selected
+
+
+def prompt_text(prompt: str, default: str | None = None, *, allow_empty: bool = False) -> str:
+    """Prompt user for text."""
+
+    suffix = f" [{default}]" if default else ""
+    while True:
+        value = input(f"{prompt}{suffix}: ").strip()
+        if value:
+            return value
+        if default is not None:
+            return default
+        if allow_empty:
+            return ""
+        print("Value is required.")
+
+
+def prompt_yes_no(prompt: str, default: bool = True) -> bool:
+    """Prompt user for yes/no."""
+
+    suffix = " [Y/n]" if default else " [y/N]"
+    answer = input(f"{prompt}{suffix}: ").strip().lower()
+    if not answer:
+        return default
+    return answer in {"y", "yes"}
+
+
+def prompt_project_type(default: str | None = None) -> str:
+    """Prompt for project type."""
+
+    current = default or "code"
+    lines = [current, *[item for item in SUPPORTED_PROJECT_TYPES if item != current]]
+    selected = pick_one_from_list("Project type", lines)
+    return selected.split("\t", 1)[0].strip()
+
+
+def prompt_capabilities(project_type: str) -> list[str]:
+    """Prompt for capabilities."""
+
+    match project_type:
+        case "hardware":
+            options = list(HARDWARE_CAPABILITIES)
+            defaults = ["files", "docs", "mindmap"]
+        case "notes":
+            options = list(NOTES_CAPABILITIES)
+            defaults = ["files", "docs"]
+        case _:
+            return []
+    return pick_many_from_list("Capabilities", options, defaults)
+
+
+def default_capabilities(project_type: str) -> list[str]:
+    """Return default capabilities for project type."""
+
+    match project_type:
+        case "hardware":
+            return ["files", "docs", "mindmap"]
+        case "notes":
+            return ["files", "docs"]
+        case _:
+            return []
+
+
+def create_launcher_wrapper(
+    project: Project,
+    launcher_name: str,
+    script_path: Path,
+    *,
+    interactive: bool,
+) -> Path:
+    """Create per-project wrapper launcher."""
+
+    launcher_path = Path.home() / "bin" / launcher_name
+    launcher_path.parent.mkdir(parents=True, exist_ok=True)
+    if launcher_path.exists():
+        if not interactive:
+            fail(f"Launcher already exists: {launcher_path}")
+        if not prompt_yes_no(
+            f"Launcher {launcher_path} exists. Overwrite?",
+            default=False,
+        ):
+            fail("Launcher creation cancelled.")
+    launcher_path.write_text(
+        "\n".join(
+            (
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                f'exec {shlex.quote(str(script_path))} open {shlex.quote(project.slug)} "$@"',
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    launcher_path.chmod(0o755)
+    return launcher_path
+
+
+def parsed_command_pairs(values: list[str]) -> dict[str, str]:
+    """Parse repeated capability=command values."""
+
+    commands: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            fail(f"Expected capability=command, got: {value}")
+        capability, command = value.split("=", 1)
+        capability = capability.strip()
+        command = command.strip()
+        if not capability or not command:
+            fail(f"Expected capability=command, got: {value}")
+        commands[capability] = command
+    return commands
+
+
+def delete_wrapper_launcher(project: Project) -> bool:
+    """Delete generated wrapper launcher when present."""
+
+    if project.launcher_type != "wrapper" or not project.launcher:
+        return False
+    launcher_path = Path(project.launcher).expanduser()
+    if not launcher_path.exists():
+        return False
+    launcher_path.unlink()
+    return True
+
+
+def extra_project_worktrees(project: Project) -> list[str]:
+    """Return non-primary worktree branches for project."""
+
+    if not project.path_obj.exists() or not is_git_repo(project.path_obj):
+        return []
+    return sorted(
+        current_branch.removeprefix("refs/heads/")
+        for current_path, current_branch in git_worktree_pairs(project.path_obj)
+        if current_branch.startswith("refs/heads/")
+        and Path(current_path).resolve() != project.path_obj.resolve()
+    )
+
+
+def delete_project(
+    project: Project,
+    arguments: argparse.Namespace,
+    projects: list[Project],
+) -> None:
+    """Delete project from registry."""
+
+    active_sessions = project_active_session_labels(
+        project,
+        active_tmux_sessions(),
+        active_zellij_sessions(),
+    )
+    worktrees = extra_project_worktrees(project)
+    launcher_text = (
+        f" and remove launcher {project.launcher}"
+        if project.launcher_type == "wrapper" and project.launcher and not arguments.keep_launcher
+        else ""
+    )
+    prompt = (
+        f"Delete project '{project.name}' from registry{launcher_text}? "
+        f"Project files at {project.path} will stay on disk."
+    )
+    if not arguments.yes:
+        if not sys.stdin.isatty():
+            fail("Project deletion requires --yes in non-interactive mode.")
+        if not prompt_yes_no(prompt, default=False):
+            fail("Project deletion cancelled.")
+
+    save_registry([item for item in projects if item.slug != project.slug])
+    launcher_deleted = not arguments.keep_launcher and delete_wrapper_launcher(project)
+
+    print(f"Deleted project '{project.name}'")
+    print(f"  registry → {PROJECTS_FILE}")
+    print(f"  path     → kept on disk: {project.path}")
+    if project.launcher:
+        match launcher_deleted:
+            case True:
+                print(f"  launcher → removed: {project.launcher}")
+            case False if arguments.keep_launcher:
+                print(f"  launcher → kept: {project.launcher}")
+            case _:
+                print(f"  launcher → unchanged: {project.launcher}")
+    if active_sessions:
+        print(f"  sessions → still running: {', '.join(active_sessions)}")
+    if worktrees:
+        print(f"  worktree → kept: {', '.join(worktrees)}")
+
+
+def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
+    """Register a new project."""
+
+    projects = load_registry()
+    interactive = sys.stdin.isatty()
+    if arguments.name is None and not interactive:
+        fail("Project name is required in non-interactive mode.")
+    if arguments.path is None and not interactive:
+        fail("Project path is required in non-interactive mode.")
+    if arguments.type is None and not interactive:
+        fail("Project type is required in non-interactive mode.")
+
+    name = arguments.name or prompt_text("Project name")
+    if any(project.name.lower() == name.lower() for project in projects):
+        fail(f"Project '{name}' already exists.")
+
+    project_path = resolve_path(arguments.path or prompt_text("Project path"))
+    if not project_path.exists() and (
+        not interactive
+        or prompt_yes_no(
+            f"Create project directory {project_path}?",
+            default=True,
+        )
+    ):
+        project_path.mkdir(parents=True, exist_ok=True)
+
+    project_type = arguments.type or prompt_project_type()
+    if project_type not in SUPPORTED_PROJECT_TYPES:
+        fail(f"Unsupported project type: {project_type}")
+
+    slug = next_unique_slug(projects, arguments.slug or name)
+    capabilities = arguments.capability or []
+    commands = parsed_command_pairs(arguments.command_pairs)
+    layout_variant = arguments.layout_variant
+    base_branch = arguments.base_branch
+
+    if project_type == "code":
+        repo_base_branch = detected_base_branch(project_path) if is_git_repo(project_path) else ""
+        if base_branch is None:
+            if interactive:
+                base_branch = prompt_text(
+                    "Default base branch",
+                    repo_base_branch or "main",
+                    allow_empty=True,
+                )
+            else:
+                base_branch = repo_base_branch or "main"
+        if repo_base_branch and not resolve_base_start_point(project_path, base_branch):
+            fail(
+                (
+                    f"Base branch '{base_branch}' was not found for repository {project_path}. "
+                    f"Detected default branch: '{repo_base_branch}'."
+                )
+            )
+        if layout_variant is None:
+            if interactive:
+                layout_variant = pick_one_from_list("Code layout", ["minimal", "full", "custom"]).strip()
+            else:
+                layout_variant = "minimal"
+        capabilities = []
+    else:
+        if not capabilities:
+            capabilities = (
+                prompt_capabilities(project_type)
+                if interactive
+                else default_capabilities(project_type)
+            )
+        for capability in capabilities:
+            if capability in commands:
+                continue
+            if not interactive:
+                continue
+            entered = prompt_text(
+                f"Command for {capability} (leave blank for default/manual use)",
+                allow_empty=True,
+            )
+            if entered:
+                commands[capability] = entered
+
+    project = Project(
+        slug=slug,
+        name=name,
+        path=str(project_path),
+        type=project_type,
+        base_branch=base_branch or None,
+        layout_variant=layout_variant or None,
+        capabilities=capabilities,
+        commands=commands,
+    )
+
+    create_launcher = arguments.create_launcher
+    if not arguments.create_launcher and not arguments.no_launcher and interactive:
+        create_launcher = prompt_yes_no("Create launcher alias in ~/bin?", default=False)
+    if create_launcher:
+        launcher_name = arguments.launcher_name or (
+            prompt_text("Launcher name", project.slug) if interactive else project.slug
+        )
+        launcher_path = create_launcher_wrapper(
+            project,
+            launcher_name,
+            script_path,
+            interactive=interactive,
+        )
+        project.launcher = str(launcher_path)
+        project.launcher_type = "wrapper"
+
+    projects.append(project)
+    save_registry(projects)
+    print(f"Registered project '{project.name}' ({project.type})")
+    print(f"  slug   → {project.slug}")
+    print(f"  path   → {project.path}")
+    print(f"  file   → {PROJECTS_FILE}")
+    if project.launcher:
+        print(f"  alias  → {project.launcher}")
+
+
+def open_docs(project: Project) -> None:
+    """Open docs for project."""
+
+    ensure_project_path(project)
+    raise SystemExit(shell_exec(default_docs_command(project), cwd=project.path_obj))
+
+
+def run_capability(project: Project, capability: str) -> None:
+    """Run named project capability."""
+
+    ensure_project_path(project)
+    command = project.commands.get(capability)
+    if command is None:
+        match capability:
+            case "docs":
+                command = default_docs_command(project)
+            case "files":
+                command = default_files_command(project)
+            case _:
+                available = ", ".join(sorted(project.commands)) or "none"
+                fail(
+                    f"Project '{project.name}' has no command for capability '{capability}'. "
+                    f"Available commands: {available}"
+                )
+    raise SystemExit(shell_exec(command, cwd=project.path_obj))
+
+
+def tool_shell(project: Project) -> None:
+    """Print project tool summary."""
+
+    ensure_project_path(project)
+    print(f"Project: {project.name} [{project.type}]")
+    print(f"Path:    {project.path}")
+    if project.capabilities:
+        print(f"Capabilities: {', '.join(project.capabilities)}")
+    else:
+        print("Capabilities: none configured")
+    print("")
+    if project.commands:
+        print("Available commands:")
+        for capability, command in project.commands.items():
+            print(f"  {capability:<12} projects run {project.slug} {capability}")
+            print(f"  {'':12} {command}")
+    else:
+        print("No custom commands configured.")
+    print("")
+    print("Tip:")
+    print(f"  projects info {project.slug}")
+
+
+def picker_open(script_path: Path) -> None:
+    """Pick and open a project."""
+
+    projects = load_registry()
+    selected = pick_one_from_list("Projects", list_picker_lines(projects))
+    slug = selected.split("\t", 1)[0]
+    open_project(
+        find_project(projects, slug),
+        parse_prefs(),
+        script_path,
+        branch=None,
+        from_branch=None,
+        force=False,
+    )
+
+
+def open_project(
+    project: Project,
+    runtime: RuntimePrefs,
+    script_path: Path,
+    *,
+    branch: str | None,
+    from_branch: str | None,
+    force: bool,
+) -> None:
+    """Open project in configured multiplexer."""
+
+    project_dir: Path
+    session_name: str
+
+    if project.type == "code":
+        project_dir, session_name = project_dir_for_code_open(project, branch, from_branch, force)
+    else:
+        if branch or from_branch or force:
+            fail(f"Branch/worktree flags are only supported for code projects.")
+        ensure_project_path(project)
+        project_dir = project.path_obj
+        session_name = project_session_name(project)
+
+    tabs = project_tabs(project, runtime, script_path)
+    if runtime.multiplexer == "zellij":
+        layout_path = custom_zellij_layout(project)
+        if layout_path is None:
+            layout_path = write_zellij_layout(tabs, session_name)
+        open_in_zellij(session_name, project_dir, layout_path)
+    open_in_tmux(project, session_name, project_dir, tabs)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build CLI parser."""
+
+    parser = argparse.ArgumentParser(
+        prog="projects",
+        add_help=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Registry-driven PDE project manager.",
+        epilog=PROJECTS_HELP,
+    )
+    parser.add_argument("-h", "--help", action="store_true")
+    subparsers = parser.add_subparsers(dest="command")
+
+    open_parser = subparsers.add_parser("open", add_help=False)
+    open_parser.add_argument("project", nargs="?")
+    open_parser.add_argument("-b", "--branch")
+    open_parser.add_argument("--from", dest="from_branch")
+    open_parser.add_argument("-f", "--force", action="store_true")
+    open_parser.add_argument("--list-worktrees", action="store_true")
+    open_parser.add_argument("--delete-worktree", action="store_true")
+    open_parser.add_argument("--worktree-origin", action="store_true")
+    open_parser.add_argument("-h", "--help", action="store_true")
+
+    list_parser = subparsers.add_parser("list", add_help=False)
+    list_parser.add_argument("-h", "--help", action="store_true")
+
+    info_parser = subparsers.add_parser("info", add_help=False)
+    info_parser.add_argument("project")
+    info_parser.add_argument("-h", "--help", action="store_true")
+
+    run_parser = subparsers.add_parser("run", add_help=False)
+    run_parser.add_argument("project")
+    run_parser.add_argument("capability")
+    run_parser.add_argument("-h", "--help", action="store_true")
+
+    register_parser = subparsers.add_parser("register", add_help=False, aliases=["add"])
+    register_parser.add_argument("name", nargs="?")
+    register_parser.add_argument("path", nargs="?")
+    register_parser.add_argument("--slug")
+    register_parser.add_argument("--type", choices=SUPPORTED_PROJECT_TYPES)
+    register_parser.add_argument("--base-branch")
+    register_parser.add_argument("--layout-variant", choices=("minimal", "full", "custom"))
+    register_parser.add_argument("--capability", action="append", default=[])
+    register_parser.add_argument("--command", dest="command_pairs", action="append", default=[])
+    register_parser.add_argument("--create-launcher", action="store_true")
+    register_parser.add_argument("--launcher-name")
+    register_parser.add_argument("--no-launcher", action="store_true")
+    register_parser.add_argument("-h", "--help", action="store_true")
+
+    delete_parser = subparsers.add_parser(
+        "delete",
+        add_help=False,
+        aliases=["remove", "rm", "unregister"],
+    )
+    delete_parser.add_argument("project")
+    delete_parser.add_argument("--yes", action="store_true")
+    delete_parser.add_argument("--keep-launcher", action="store_true")
+    delete_parser.add_argument("-h", "--help", action="store_true")
+
+    open_docs_parser = subparsers.add_parser("open-docs", add_help=argparse.SUPPRESS)
+    open_docs_parser.add_argument("project")
+
+    tool_shell_parser = subparsers.add_parser("tool-shell", add_help=argparse.SUPPRESS)
+    tool_shell_parser.add_argument("project")
+
+    inspect_parser = subparsers.add_parser("inspect", add_help=argparse.SUPPRESS)
+    inspect_parser.add_argument("project")
+
+    return parser
+
+
+def command_or_default(arguments: list[str]) -> list[str]:
+    """Insert default command when omitted."""
+
+    if not arguments:
+        return ["open"]
+    if arguments[0] in {
+        "open",
+        "list",
+        "info",
+        "run",
+        "register",
+        "add",
+        "delete",
+        "remove",
+        "rm",
+        "unregister",
+        "open-docs",
+        "tool-shell",
+        "inspect",
+    }:
+        return arguments
+    if arguments[0] in {"-h", "--help"}:
+        return arguments
+    return ["open", *arguments]
+
+
+def main(argv: list[str] | None = None) -> None:
+    """CLI entrypoint."""
+
+    script_path = Path(sys.argv[0]).resolve()
+    public_wrapper = script_path.parent.parent.parent / "projects"
+    if (
+        script_path.parent.name == "pde"
+        and script_path.parent.parent.name == "core"
+        and public_wrapper.exists()
+    ):
+        script_path = public_wrapper.resolve()
+    parser = build_parser()
+    normalized_arguments = command_or_default(list(sys.argv[1:] if argv is None else argv))
+    namespace = parser.parse_args(normalized_arguments)
+
+    if namespace.help:
+        print_usage()
+        return
+
+    projects = load_registry()
+    runtime = parse_prefs()
+
+    match namespace.command:
+        case "list":
+            list_projects(projects)
+        case "info":
+            print_project_info(find_project(projects, namespace.project))
+        case "run":
+            run_capability(find_project(projects, namespace.project), namespace.capability)
+        case "register" | "add":
+            register_project(namespace, script_path)
+        case "delete" | "remove" | "rm" | "unregister":
+            delete_project(
+                find_project(projects, namespace.project),
+                namespace,
+                projects,
+            )
+        case "open-docs":
+            open_docs(find_project(projects, namespace.project))
+        case "tool-shell":
+            tool_shell(find_project(projects, namespace.project))
+        case "inspect":
+            print_project_inspect_json(find_project(projects, namespace.project))
+        case "open":
+            if namespace.project is None:
+                picker_open(script_path)
+                return
+            project = find_project(projects, namespace.project)
+            if namespace.list_worktrees or namespace.delete_worktree or namespace.worktree_origin:
+                if project.type != "code":
+                    fail("Worktree actions are only supported for code projects.")
+                ensure_project_path(project)
+                if not is_git_repo(project.path_obj):
+                    fail(f"Project '{project.name}' is not a git repository.")
+                maybe_delegate_to_external_launcher(
+                    project,
+                    branch=namespace.branch,
+                    from_branch=namespace.from_branch,
+                    force=namespace.force,
+                    list_worktrees=namespace.list_worktrees,
+                    delete_worktree_flag=namespace.delete_worktree,
+                    worktree_origin_flag=namespace.worktree_origin,
+                )
+                if namespace.list_worktrees:
+                    print(capture_command(["git", "worktree", "list"], cwd=project.path_obj))
+                    return
+                if namespace.delete_worktree:
+                    if not namespace.branch:
+                        fail("--delete-worktree requires -b <branch>")
+                    delete_worktree(project.path_obj, namespace.branch)
+                    return
+                if namespace.worktree_origin:
+                    if not namespace.branch:
+                        fail("--worktree-origin requires -b <branch>")
+                    show_worktree_origin(project.path_obj, namespace.branch)
+                    return
+            maybe_delegate_to_external_launcher(
+                project,
+                branch=namespace.branch,
+                from_branch=namespace.from_branch,
+                force=namespace.force,
+                list_worktrees=False,
+                delete_worktree_flag=False,
+                worktree_origin_flag=False,
+            )
+            open_project(
+                project,
+                runtime,
+                script_path,
+                branch=namespace.branch,
+                from_branch=namespace.from_branch,
+                force=namespace.force,
+            )
+        case _:
+            print_usage()
+            raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+selection="$(tmux save-buffer - 2>/dev/null || true)"
+
+if [[ -z "$selection" ]]; then
+  echo "No tmux selection found. Select a file path first."
+  exit 1
+fi
+
+project_dir="$(tmux display-message -p -t "${TMUX_PANE:-}" "#{pane_current_path}" 2>/dev/null || pwd)"
+session_name="$(tmux display-message -p -t "${TMUX_PANE:-}" "#{session_name}" 2>/dev/null || true)"
+
+target_pane="$(
+  tmux list-panes -a -F "#{session_name}:#{window_index}.#{pane_index} #{pane_current_command}" \
+    | awk -v session="$session_name" '$1 ~ ("^" session ":") && $2 == "nvim" { print $1; exit }'
+)"
+
+if [[ -z "$target_pane" ]]; then
+  echo "No Neovim pane found in current tmux session."
+  exit 1
+fi
+
+parsed="$(
+  python3 - "$selection" "$project_dir" <<'PY'
+import os
+import re
+import sys
+
+text = sys.argv[1]
+project_dir = sys.argv[2]
+
+patterns = [
+    re.compile(r'(?P<path>[A-Za-z0-9_./-]+\.(?:py|pyi|lua|ts|tsx|js|jsx|java|rs|json|toml|ya?ml|md|graphql)):(?P<line>\d+):(?P<col>\d+)'),
+    re.compile(r'(?P<path>[A-Za-z0-9_./-]+\.(?:py|pyi|lua|ts|tsx|js|jsx|java|rs|json|toml|ya?ml|md|graphql)).*?(?P<line>\d+):(?P<col>\d+)'),
+    re.compile(r'(?P<path>[A-Za-z0-9_./-]+\.(?:py|pyi|lua|ts|tsx|js|jsx|java|rs|json|toml|ya?ml|md|graphql))'),
+]
+
+for pattern in patterns:
+    match = pattern.search(text)
+    if not match:
+        continue
+
+    path = match.group("path")
+    line = match.groupdict().get("line") or "1"
+    col = match.groupdict().get("col") or "1"
+
+    if not os.path.isabs(path):
+        path = os.path.join(project_dir, path)
+
+    print(f"{os.path.normpath(path)}\t{line}\t{col}")
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+)" || {
+  echo "No file path found in selection."
+  exit 1
+}
+
+file_path="$(printf '%s' "$parsed" | cut -f1)"
+line_number="$(printf '%s' "$parsed" | cut -f2)"
+column_number="$(printf '%s' "$parsed" | cut -f3)"
+
+tmux send-keys -t "$target_pane" Escape
+tmux send-keys -t "$target_pane" ":e $file_path" Enter
+tmux send-keys -t "$target_pane" ":$line_number" Enter
+tmux send-keys -t "$target_pane" "${column_number}|"
+tmux send-keys -t "$target_pane" "zz"
+
+tmux display-message "Opened $file_path:$line_number:$column_number in Neovim"

@@ -1,0 +1,587 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ps_file="$(mktemp)"
+ports_file="$(mktemp)"
+ps_err_file="$(mktemp)"
+ports_err_file="$(mktemp)"
+
+cleanup() {
+  rm -f "$ps_file" "$ports_file" "$ps_err_file" "$ports_err_file"
+}
+
+trap cleanup EXIT
+
+ps_status=0
+ports_status=0
+
+ps -axo pid=,ppid=,%cpu=,%mem=,etime=,comm= > "$ps_file" 2> "$ps_err_file" || ps_status=$?
+lsof -nP -iTCP -sTCP:LISTEN > "$ports_file" 2> "$ports_err_file" || ports_status=$?
+
+python3 - "$ps_file" "$ports_file" "$ps_err_file" "$ports_err_file" "$ps_status" "$ports_status" "$@" <<'PY'
+from __future__ import annotations
+
+import json
+import os
+import sys
+from dataclasses import asdict, dataclass
+from datetime import datetime
+from pathlib import Path
+
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+CYAN = "\033[36m"
+MAGENTA = "\033[35m"
+
+
+@dataclass(frozen=True)
+class ProcessRecord:
+    pid: int
+    ppid: int
+    cpu: float
+    mem: float
+    elapsed: str
+    command: str
+    short_name: str
+    category: str
+    description: str
+    system_owned: bool
+
+
+@dataclass(frozen=True)
+class CategorySummary:
+    category: str
+    count: int
+    cpu: float
+    mem: float
+
+
+def load_average_values() -> tuple[float, ...]:
+    try:
+        return os.getloadavg()
+    except (AttributeError, OSError):
+        return ()
+
+
+def use_color(args: list[str]) -> bool:
+    return "--no-color" not in args and sys.stdout.isatty() and os.environ.get("TERM", "dumb") != "dumb"
+
+
+def paint(text: str, color: str, enabled: bool) -> str:
+    if not enabled:
+        return text
+
+    return f"{color}{text}{RESET}"
+
+
+def classify(command: str) -> tuple[str, str, bool]:
+    lower = command.lower()
+    name = Path(command).name.lower()
+    rules: tuple[tuple[str, str, bool, tuple[str, ...]], ...] = (
+        (
+            "System",
+            "Core macOS or Linux service. Usually leave it alone unless it is persistently hot.",
+            True,
+            (
+                "kernel_task",
+                "launchd",
+                "windowserver",
+                "loginwindow",
+                "runningboardd",
+                "cfprefsd",
+                "distnoted",
+                "mds",
+                "mdworker",
+                "spotlight",
+                "sysmond",
+                "notifyd",
+                "trustd",
+                "bluetoothd",
+                "airportd",
+                "corespotlightd",
+                "watchdogd",
+                "controlcenter",
+                "dock",
+                "finder",
+                "systemuiserver",
+                "xpcproxy",
+                "chronod",
+                "powerd",
+            ),
+        ),
+        (
+            "Browser",
+            "Browser main or helper process. Many helpers are normal, but browsers can be a big RAM sink.",
+            False,
+            (
+                "google chrome",
+                "chrome",
+                "chromium",
+                "arc",
+                "firefox",
+                "safari",
+                "brave",
+                "microsoft edge",
+            ),
+        ),
+        (
+            "Container / Virtualization",
+            "Container or VM runtime. Common cause of steady RAM and background CPU usage.",
+            False,
+            (
+                "docker",
+                "com.docker",
+                "orbstack",
+                "colima",
+                "podman",
+                "lima",
+                "qemu",
+                "vpnkit",
+                "hyperkit",
+                "minikube",
+            ),
+        ),
+        (
+            "Kubernetes / Cloud",
+            "Cluster tooling or cloud CLI. Usually safe, but background watches can stay active.",
+            False,
+            (
+                "kubectl",
+                "k9s",
+                "helm",
+                "skaffold",
+                "tilt",
+                "telepresence",
+                "aws",
+                "gcloud",
+                "az",
+            ),
+        ),
+        (
+            "Editor / IDE",
+            "Editor, IDE, or language tooling. Watchers and indexers can spike CPU.",
+            False,
+            (
+                "nvim",
+                "vim",
+                "code",
+                "cursor",
+                "pyright",
+                "basedpyright",
+                "pylsp",
+                "eslint",
+                "typescript",
+                "node",
+                "npm",
+                "yarn",
+                "java",
+                "idea",
+                "goland",
+                "pycharm",
+                "rubymine",
+                "studio",
+            ),
+        ),
+        (
+            "AI Tooling",
+            "Interactive AI CLI or helper. Safe to keep when actively using it, otherwise close idle panes.",
+            False,
+            (
+                "codex",
+                "claude",
+                "aider",
+                "ollama",
+                "cursor-agent",
+            ),
+        ),
+        (
+            "Shell / Multiplexer",
+            "Shell, tmux, or Zellij process. Usually lightweight unless many panes are busy.",
+            False,
+            (
+                "zsh",
+                "bash",
+                "fish",
+                "tmux",
+                "zellij",
+                "screen",
+                "ssh",
+            ),
+        ),
+        (
+            "Git / Terminal Tools",
+            "Terminal utility. Usually cheap unless refreshing very often.",
+            False,
+            (
+                "lazygit",
+                "git",
+                "btop",
+                "htop",
+                "fzf",
+                "rg",
+                "fd",
+                "sed",
+                "awk",
+            ),
+        ),
+        (
+            "Database / Queue",
+            "Database, cache, or queue server. Expected to reserve memory while running.",
+            False,
+            (
+                "postgres",
+                "postgresql",
+                "redis",
+                "mongod",
+                "mysql",
+                "mariadb",
+                "rabbitmq",
+                "valkey",
+            ),
+        ),
+        (
+            "Sync / Security",
+            "Sync, backup, VPN, or security agent. Good place to inspect autostart impact.",
+            False,
+            (
+                "dropbox",
+                "onedrive",
+                "google drive",
+                "syncthing",
+                "tailscale",
+                "1password",
+                "little snitch",
+                "zoom",
+                "slack",
+                "discord",
+            ),
+        ),
+    )
+
+    for category, description, system_owned, patterns in rules:
+        if any(pattern in lower or pattern == name for pattern in patterns):
+            return category, description, system_owned
+
+    return "Unknown", "Unknown or project-specific binary. Worth checking if it keeps high CPU or RAM.", False
+
+
+def parse_processes(path: str) -> list[ProcessRecord]:
+    records: list[ProcessRecord] = []
+    with open(path, encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            parts = line.split(None, 5)
+            if len(parts) != 6:
+                continue
+
+            category, description, system_owned = classify(parts[5])
+            records.append(
+                ProcessRecord(
+                    pid=int(parts[0]),
+                    ppid=int(parts[1]),
+                    cpu=float(parts[2]),
+                    mem=float(parts[3]),
+                    elapsed=parts[4],
+                    command=parts[5],
+                    short_name=Path(parts[5]).name,
+                    category=category,
+                    description=description,
+                    system_owned=system_owned,
+                )
+            )
+
+    return records
+
+
+def parse_listening_ports(path: str) -> list[str]:
+    with open(path, encoding="utf-8") as handle:
+        lines = [line.rstrip("\n") for line in handle if line.strip()]
+
+    if len(lines) <= 1:
+        return []
+
+    return lines[1:9]
+
+
+def read_error(path: str) -> str | None:
+    with open(path, encoding="utf-8") as handle:
+        message = handle.read().strip()
+
+    if not message:
+        return None
+
+    return message
+
+
+def summarize_categories(records: list[ProcessRecord]) -> list[CategorySummary]:
+    totals: dict[str, CategorySummary] = {}
+    for record in records:
+        summary = totals.get(record.category)
+        if summary is None:
+            totals[record.category] = CategorySummary(record.category, 1, record.cpu, record.mem)
+            continue
+
+        totals[record.category] = CategorySummary(
+            summary.category,
+            summary.count + 1,
+            summary.cpu + record.cpu,
+            summary.mem + record.mem,
+        )
+
+    return sorted(totals.values(), key=lambda item: (item.mem, item.cpu, item.count), reverse=True)
+
+
+def top_processes(records: list[ProcessRecord], key: str, limit: int = 8) -> list[ProcessRecord]:
+    match key:
+        case "cpu":
+            return sorted(records, key=lambda item: (item.cpu, item.mem), reverse=True)[:limit]
+        case "mem":
+            return sorted(records, key=lambda item: (item.mem, item.cpu), reverse=True)[:limit]
+        case _:
+            raise ValueError(f"Unsupported key: {key}")
+
+
+def candidate_reason(record: ProcessRecord) -> str | None:
+    if record.system_owned:
+        return None
+
+    if record.cpu >= 40:
+        return "very high CPU"
+
+    if record.mem >= 10:
+        return "high RAM"
+
+    if record.cpu >= 20 and record.mem >= 3:
+        return "active CPU + RAM"
+
+    return None
+
+
+def optimization_candidates(records: list[ProcessRecord]) -> list[tuple[ProcessRecord, str]]:
+    candidates: list[tuple[ProcessRecord, str]] = []
+    for record in sorted(records, key=lambda item: (item.cpu + item.mem, item.cpu), reverse=True):
+        reason = candidate_reason(record)
+        if reason is None:
+            continue
+
+        candidates.append((record, reason))
+
+    return candidates[:8]
+
+
+def recommendation_lines(records: list[ProcessRecord], categories: list[CategorySummary]) -> list[str]:
+    lines: list[str] = []
+    category_index = {item.category: item for item in categories}
+
+    container_summary = category_index.get("Container / Virtualization")
+    if container_summary is not None and container_summary.mem >= 8:
+        lines.append("Container stack is using noticeable RAM. Check Docker, OrbStack, or local clusters first.")
+
+    browser_summary = category_index.get("Browser")
+    if browser_summary is not None and browser_summary.mem >= 12:
+        lines.append("Browser helpers are a major RAM user. Closing heavy tabs is likely high impact.")
+
+    editor_summary = category_index.get("Editor / IDE")
+    if editor_summary is not None and editor_summary.cpu >= 30:
+        lines.append("Editor or language tooling is hot. Look for indexing, test watchers, or runaway Node/Python jobs.")
+
+    ai_summary = category_index.get("AI Tooling")
+    if ai_summary is not None and ai_summary.count >= 2:
+        lines.append("Multiple AI panes are running. Close idle Codex or Claude sessions if you are not using them.")
+
+    if [
+        record
+        for record in records
+        if record.system_owned and record.cpu >= 25
+    ]:
+        lines.append("A core system service is hot. If this persists, inspect Spotlight indexing, graphics load, or login items.")
+
+    if [
+        record
+        for record in records
+        if record.category == "Unknown" and (record.cpu >= 10 or record.mem >= 3)
+    ]:
+        lines.append("There are unknown high-impact processes. Those are good candidates for manual inspection.")
+
+    if not lines:
+        lines.append("Nothing obviously abnormal in this snapshot. Focus on the top CPU and RAM rows if the machine still feels slow.")
+
+    return lines
+
+
+def format_table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> str:
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for index, value in enumerate(row):
+            widths[index] = max(widths[index], len(value))
+
+    rendered = ["  " + "  ".join(header.ljust(widths[index]) for index, header in enumerate(headers))]
+    rendered.append("  " + "  ".join("-" * width for width in widths))
+    rendered.extend("  " + "  ".join(value.ljust(widths[index]) for index, value in enumerate(row)) for row in rows)
+    return "\n".join(rendered)
+
+
+def build_json_payload(
+    records: list[ProcessRecord],
+    categories: list[CategorySummary],
+    ports: list[str],
+    errors: list[str],
+) -> str:
+    return json.dumps(
+        {
+            "summary": {
+                "total_processes": len(records),
+                "load_average": list(load_average_values()),
+                "errors": errors,
+            },
+            "categories": [asdict(item) for item in categories],
+            "top_cpu": [asdict(item) for item in top_processes(records, "cpu")],
+            "top_mem": [asdict(item) for item in top_processes(records, "mem")],
+            "candidates": [
+                {
+                    **asdict(record),
+                    "reason": reason,
+                }
+                for record, reason in optimization_candidates(records)
+            ],
+            "listening_ports": ports,
+        },
+        indent=2,
+    )
+
+
+def main() -> int:
+    ps_path, ports_path, ps_err_path, ports_err_path, ps_status, ports_status, *args = sys.argv[1:]
+    records = parse_processes(ps_path)
+    ports = parse_listening_ports(ports_path)
+    categories = summarize_categories(records)
+    errors = [
+        message
+        for message in (
+            read_error(ps_err_path) if ps_status != "0" else None,
+            read_error(ports_err_path) if ports_status != "0" else None,
+        )
+        if message is not None
+    ]
+
+    if "--json" in args:
+        print(build_json_payload(records, categories, ports, errors))
+        return 0
+
+    color = use_color(args)
+    load_average = load_average_values()
+
+    print(paint("Process analysis", BOLD, color))
+    print(f"Snapshot: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    print(f"Processes: {len(records)}")
+    if load_average:
+        print(f"Load avg: {load_average[0]:.2f} {load_average[1]:.2f} {load_average[2]:.2f}")
+    if errors:
+        for message in errors:
+            print(f"Note: {message}")
+    print()
+
+    if not records:
+        print(paint("No process data available in this environment.", DIM, color))
+        return 0
+
+    print(paint("Top CPU", CYAN, color))
+    print(
+        format_table(
+            ("PID", "CPU%", "MEM%", "Category", "Command"),
+            [
+                (
+                    str(record.pid),
+                    f"{record.cpu:.1f}",
+                    f"{record.mem:.1f}",
+                    record.category,
+                    record.short_name[:28],
+                )
+                for record in top_processes(records, "cpu")
+            ],
+        )
+    )
+    print()
+
+    print(paint("Top RAM", CYAN, color))
+    print(
+        format_table(
+            ("PID", "MEM%", "CPU%", "Category", "Command"),
+            [
+                (
+                    str(record.pid),
+                    f"{record.mem:.1f}",
+                    f"{record.cpu:.1f}",
+                    record.category,
+                    record.short_name[:28],
+                )
+                for record in top_processes(records, "mem")
+            ],
+        )
+    )
+    print()
+
+    print(paint("Category summary", CYAN, color))
+    print(
+        format_table(
+            ("Category", "Count", "CPU%", "MEM%"),
+            [
+                (
+                    item.category,
+                    str(item.count),
+                    f"{item.cpu:.1f}",
+                    f"{item.mem:.1f}",
+                )
+                for item in categories[:8]
+            ],
+        )
+    )
+    print()
+
+    print(paint("Optimization candidates", CYAN, color))
+    candidates = optimization_candidates(records)
+    if candidates:
+        print(
+            format_table(
+                ("PID", "Why", "Category", "CPU%", "MEM%", "Command"),
+                [
+                    (
+                        str(record.pid),
+                        reason,
+                        record.category,
+                        f"{record.cpu:.1f}",
+                        f"{record.mem:.1f}",
+                        record.short_name[:26],
+                    )
+                    for record, reason in candidates
+                ],
+            )
+        )
+    else:
+        print(paint("  No clear non-system optimization candidates in this snapshot.", DIM, color))
+    print()
+
+    print(paint("Recommendations", CYAN, color))
+    for line in recommendation_lines(records, categories):
+        print(f"  • {line}")
+    print()
+
+    print(paint("Listening ports", CYAN, color))
+    if ports:
+        for line in ports:
+            print(f"  {line}")
+    else:
+        print(paint("  No listening TCP ports found.", DIM, color))
+    print()
+
+    print(paint("Tip", MAGENTA, color))
+    print("  Use ai-system-snapshot when you want a bigger copy/paste context for an external AI review.")
+    return 0
+
+
+raise SystemExit(main())
+PY

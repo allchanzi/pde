@@ -1,0 +1,552 @@
+#!/usr/bin/env python3
+"""Context-aware worktree picker for PDE code projects."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+PROJECTS_FILE = Path(
+    os.environ.get("PDE_PROJECTS_FILE", "~/.config/pde/projects.json")
+).expanduser()
+SCRIPT_PATH = Path(__file__).resolve()
+PROJECTS_BIN = SCRIPT_PATH.parent / "projects"
+
+
+@dataclass(slots=True)
+class Project:
+    """Code project entry."""
+
+    slug: str
+    name: str
+    path: str
+    type: str
+    base_branch: str | None
+
+    @property
+    def path_obj(self) -> Path:
+        """Return project path."""
+
+        return Path(self.path).expanduser().resolve()
+
+
+@dataclass(slots=True)
+class WorktreeRow:
+    """Existing worktree row."""
+
+    kind: str
+    branch: str | None
+    path: str
+    tmux_active: bool
+    zellij_active: bool
+
+    def sessions_text(self) -> str:
+        """Return active session labels."""
+
+        labels: list[str] = []
+        if self.tmux_active:
+            labels.append("tmux")
+        if self.zellij_active:
+            labels.append("zellij")
+        return ",".join(labels) if labels else "-"
+
+
+@dataclass(slots=True)
+class BranchCandidate:
+    """Selectable branch candidate."""
+
+    branch: str
+    has_local: bool
+    has_remote: bool
+    has_worktree: bool
+    tmux_active: bool
+    zellij_active: bool
+
+    def status_text(self) -> str:
+        """Return compact branch status."""
+
+        labels: list[str] = []
+        if self.has_local:
+            labels.append("local")
+        if self.has_remote:
+            labels.append("remote")
+        if self.has_worktree:
+            labels.append("worktree")
+        if self.tmux_active:
+            labels.append("tmux")
+        if self.zellij_active:
+            labels.append("zellij")
+        return ",".join(labels) if labels else "-"
+
+
+def fail(message: str) -> None:
+    """Exit with error."""
+
+    raise SystemExit(message)
+
+
+def run_command(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    capture_output: bool = False,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    """Run command."""
+
+    return subprocess.run(
+        command,
+        cwd=str(cwd) if cwd else None,
+        capture_output=capture_output,
+        text=True,
+        check=check,
+    )
+
+
+def capture_command(command: list[str], *, cwd: Path | None = None) -> str:
+    """Capture stdout."""
+
+    return run_command(command, cwd=cwd, capture_output=True).stdout.strip()
+
+
+def command_exists(command: str) -> bool:
+    """Return whether command exists."""
+
+    return shutil.which(command) is not None
+
+
+def require_gum() -> None:
+    """Ensure gum is available."""
+
+    if not command_exists("gum"):
+        fail("gum is not installed. Run ./install.sh or brew install gum.")
+
+
+def load_projects() -> list[Project]:
+    """Load registered code projects."""
+
+    if not PROJECTS_FILE.exists():
+        return []
+    raw = json.loads(PROJECTS_FILE.read_text(encoding="utf-8"))
+    projects = raw.get("projects", [])
+    if not isinstance(projects, list):
+        fail(f"Invalid registry format in {PROJECTS_FILE}.")
+    loaded: list[Project] = []
+    for item in projects:
+        if str(item.get("type", "")).strip() != "code":
+            continue
+        loaded.append(
+            Project(
+                slug=str(item.get("slug", "")).strip(),
+                name=str(item.get("name", "")).strip(),
+                path=str(item.get("path", "")).strip(),
+                type="code",
+                base_branch=str(item.get("base_branch", "")).strip() or None,
+            )
+        )
+    return sorted(loaded, key=lambda project: project.name.lower())
+
+
+def git_common_dir(path: Path) -> Path | None:
+    """Return common git dir for path."""
+
+    completed = run_command(
+        ["git", "rev-parse", "--git-common-dir"],
+        cwd=path,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return None
+    return (path / completed.stdout.strip()).resolve()
+
+
+def current_path(arguments: argparse.Namespace) -> Path:
+    """Resolve active path."""
+
+    return Path(arguments.path or os.getcwd()).expanduser().resolve()
+
+
+def find_project_by_slug(projects: list[Project], slug: str) -> Project:
+    """Find explicit project."""
+
+    normalized = slug.strip().lower()
+    for project in projects:
+        if project.slug.lower() == normalized or project.name.lower() == normalized:
+            return project
+    fail(f"Unknown project: {slug}")
+
+
+def choose_project_with_input(projects: list[Project]) -> Project:
+    """Choose project using gum."""
+
+    lines = [
+        f"{project.slug}\t[{project.base_branch or '-'}]\t{project.name}\t{project.path}"
+        for project in projects
+    ]
+    if command_exists("fzf"):
+        completed = subprocess.run(
+            [
+                "fzf",
+                "--prompt",
+                "  code projects: ",
+                "--pointer",
+                "▶",
+                "--height",
+                "~14",
+                "--border",
+                "rounded",
+            ],
+            input="\n".join(lines),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    else:
+        require_gum()
+        completed = subprocess.run(
+            [
+                "gum",
+                "choose",
+                "--header=Code projects",
+                "--cursor=> ",
+                "--height=14",
+            ],
+            input="\n".join(lines),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        fail("Selection cancelled.")
+    slug = completed.stdout.split("\t", 1)[0].strip()
+    return find_project_by_slug(projects, slug)
+
+
+def resolve_project(arguments: argparse.Namespace) -> Project:
+    """Resolve current code project from cwd or picker."""
+
+    projects = load_projects()
+    if arguments.project:
+        return find_project_by_slug(projects, arguments.project)
+    if current_common_dir := git_common_dir(current_path(arguments)):
+        for project in projects:
+            if not project.path_obj.exists():
+                continue
+            if git_common_dir(project.path_obj) == current_common_dir:
+                return project
+    if projects:
+        return choose_project_with_input(projects)
+    fail("No matching code project found for current folder.")
+
+
+def project_inspect(project: Project) -> dict[str, object]:
+    """Load project inspect JSON."""
+
+    return json.loads(capture_command([str(PROJECTS_BIN), "inspect", project.slug]))
+
+
+def worktree_rows(project: Project) -> list[WorktreeRow]:
+    """Return project worktrees."""
+
+    inspect_data = project_inspect(project)
+    rows = inspect_data.get("rows", [])
+    if not isinstance(rows, list):
+        fail(f"Invalid inspect output for project {project.slug}.")
+    return [
+        WorktreeRow(
+            kind=str(row.get("kind", "")).strip(),
+            branch=str(row.get("branch", "")).strip() or None,
+            path=str(row.get("path", "")).strip(),
+            tmux_active=bool(row.get("tmux_active", False)),
+            zellij_active=bool(row.get("zellij_active", False)),
+        )
+        for row in rows
+    ]
+
+
+def default_base_branch(project: Project) -> str:
+    """Return default branch for new worktrees."""
+
+    if project.base_branch:
+        return project.base_branch
+    completed = run_command(
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+        cwd=project.path_obj,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode == 0 and completed.stdout.strip().startswith("refs/remotes/origin/"):
+        return completed.stdout.strip().removeprefix("refs/remotes/origin/")
+    completed = run_command(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=project.path_obj,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode == 0 and completed.stdout.strip():
+        return completed.stdout.strip()
+    return "main"
+
+
+def format_worktree_line(row: WorktreeRow) -> str:
+    """Return chooser label for worktree row."""
+
+    label = "main workspace" if row.kind == "main" else row.branch or "unknown"
+    return f"{label}  [{row.sessions_text()}]  {row.path}"
+
+
+def choose_worktree_row(project: Project) -> WorktreeRow:
+    """Choose one existing worktree."""
+
+    rows = worktree_rows(project)
+    line_to_row = {format_worktree_line(row): row for row in rows}
+    if command_exists("fzf"):
+        completed = subprocess.run(
+            [
+                "fzf",
+                "--prompt",
+                f"  {project.slug} worktrees: ",
+                "--pointer",
+                "▶",
+                "--height",
+                "~14",
+                "--border",
+                "rounded",
+            ],
+            input="\n".join(line_to_row),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    else:
+        require_gum()
+        completed = subprocess.run(
+            [
+                "gum",
+                "choose",
+                f"--header={project.name} existing worktrees",
+                "--cursor=> ",
+                "--height=14",
+            ],
+            input="\n".join(line_to_row),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        fail("Selection cancelled.")
+    match line_to_row.get(completed.stdout.strip()):
+        case WorktreeRow() as row:
+            return row
+        case _:
+            fail("Selected worktree was not found.")
+
+
+def open_project(project: Project, branch: str | None, from_branch: str | None = None) -> None:
+    """Open main workspace or worktree."""
+
+    arguments = [str(PROJECTS_BIN), "open", project.slug]
+    if branch:
+        arguments.extend(["-b", branch])
+    if from_branch:
+        arguments.extend(["--from", from_branch])
+    os.execv(str(PROJECTS_BIN), arguments)
+
+
+def switch_existing_worktree(arguments: argparse.Namespace) -> None:
+    """Pick existing worktree for current project."""
+
+    project = resolve_project(arguments)
+    row = choose_worktree_row(project)
+    open_project(project, row.branch)
+
+
+def branch_candidates(project: Project) -> list[BranchCandidate]:
+    """Return merged local/remote branch choices."""
+
+    existing_by_branch = {
+        row.branch: row
+        for row in worktree_rows(project)
+        if row.branch
+    }
+    merged: dict[str, BranchCandidate] = {}
+    for line in capture_command(
+        [
+            "git",
+            "for-each-ref",
+            "--format=%(refname:short)\t%(refname)",
+            "refs/heads",
+            "refs/remotes/origin",
+        ],
+        cwd=project.path_obj,
+    ).splitlines():
+        if not line.strip():
+            continue
+        short_name, ref_name = line.split("\t", 1)
+        if short_name == "origin/HEAD":
+            continue
+        branch = short_name.removeprefix("origin/")
+        candidate = merged.get(branch) or BranchCandidate(
+            branch=branch,
+            has_local=False,
+            has_remote=False,
+            has_worktree=False,
+            tmux_active=False,
+            zellij_active=False,
+        )
+        if ref_name.startswith("refs/heads/"):
+            candidate.has_local = True
+        if ref_name.startswith("refs/remotes/origin/"):
+            candidate.has_remote = True
+        match existing_by_branch.get(branch):
+            case WorktreeRow() as row:
+                candidate.has_worktree = True
+                candidate.tmux_active = row.tmux_active
+                candidate.zellij_active = row.zellij_active
+            case _:
+                pass
+        merged[branch] = candidate
+    return sorted(
+        merged.values(),
+        key=lambda candidate: (
+            candidate.has_worktree is False,
+            candidate.branch != default_base_branch(project),
+            candidate.branch.lower(),
+        ),
+    )
+
+
+def format_branch_line(candidate: BranchCandidate) -> str:
+    """Return chooser label for branch."""
+
+    return f"{candidate.branch}  [{candidate.status_text()}]"
+
+
+def choose_branch(project: Project) -> str:
+    """Choose branch from all local+remote branches."""
+
+    candidates = branch_candidates(project)
+    if not candidates:
+        fail(f"No branches found for project {project.slug}.")
+    line_to_branch = {
+        format_branch_line(candidate): candidate.branch for candidate in candidates
+    }
+    if command_exists("fzf"):
+        completed = subprocess.run(
+            [
+                "fzf",
+                "--prompt",
+                f"  {project.slug} branches: ",
+                "--pointer",
+                "▶",
+                "--height",
+                "~18",
+                "--border",
+                "rounded",
+            ],
+            input="\n".join(line_to_branch),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    else:
+        require_gum()
+        completed = subprocess.run(
+            [
+                "gum",
+                "choose",
+                f"--header={project.name} branches",
+                "--cursor=> ",
+                "--height=18",
+            ],
+            input="\n".join(line_to_branch),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        fail("Selection cancelled.")
+    match line_to_branch.get(completed.stdout.strip()):
+        case str() as branch:
+            return branch
+        case _:
+            fail("Selected branch was not found.")
+
+
+def switch_or_create_branch(arguments: argparse.Namespace) -> None:
+    """Choose branch and open matching worktree."""
+
+    project = resolve_project(arguments)
+    open_project(project, choose_branch(project))
+
+
+def prompt_new_branch(project: Project) -> tuple[str, str]:
+    """Prompt for new branch name using default base branch."""
+
+    base_branch = default_base_branch(project)
+    print(f"Project: {project.name} ({project.slug})")
+    print(f"Base branch: {base_branch}")
+    print("")
+    branch = input("New branch name: ").strip()
+    if not branch:
+        fail("Branch name is required.")
+    return branch, base_branch
+
+
+def create_new_branch(arguments: argparse.Namespace) -> None:
+    """Prompt for new branch worktree."""
+
+    project = resolve_project(arguments)
+    branch, base_branch = prompt_new_branch(project)
+    open_project(project, branch, base_branch)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build CLI parser."""
+
+    shared_parser = argparse.ArgumentParser(add_help=False)
+    shared_parser.add_argument("--project")
+    shared_parser.add_argument("--path")
+
+    parser = argparse.ArgumentParser(
+        prog="pde-worktree",
+        add_help=False,
+        description="Context-aware PDE worktree switcher.",
+    )
+    parser.add_argument("-h", "--help", action="store_true")
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser("existing", add_help=False, parents=[shared_parser])
+    subparsers.add_parser("branches", add_help=False, parents=[shared_parser])
+    subparsers.add_parser("new", add_help=False, parents=[shared_parser])
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    """CLI entrypoint."""
+
+    parser = build_parser()
+    namespace = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    if namespace.help:
+        print("Usage:")
+        print("  pde-worktree existing [--project <slug>] [--path <dir>]")
+        print("  pde-worktree branches [--project <slug>] [--path <dir>]")
+        print("  pde-worktree new [--project <slug>] [--path <dir>]")
+        return
+    match namespace.command or "existing":
+        case "existing":
+            switch_existing_worktree(namespace)
+        case "branches":
+            switch_or_create_branch(namespace)
+        case "new":
+            create_new_branch(namespace)
+
+
+if __name__ == "__main__":
+    main()

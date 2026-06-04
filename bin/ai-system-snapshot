@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OUT="/tmp/ai-system-snapshot.txt"
+
+{
+  echo "=== SYSTEM SNAPSHOT ==="
+  echo "Timestamp: $(date)"
+  echo
+
+  echo "=== PROCESSES (CPU + MEM) ==="
+  ps -Ao pid,ppid,user,comm,%cpu,%mem | sort -nr -k5
+  echo
+
+  echo "=== ACTIVE NETWORK CONNECTIONS ==="
+  lsof -iTCP -sTCP:ESTABLISHED -n -P
+  echo
+
+  echo "=== DOCKER CONTAINERS ==="
+  docker ps 2>/dev/null || true
+  echo
+} > "$OUT"
+
+cat "$OUT"
+
+if command -v pbcopy >/dev/null 2>&1; then
+  pbcopy < "$OUT"
+  echo; echo "Copied snapshot to clipboard: $OUT"
+elif command -v wl-copy >/dev/null 2>&1; then
+  wl-copy < "$OUT"
+  echo; echo "Copied snapshot to clipboard: $OUT"
+elif command -v xclip >/dev/null 2>&1; then
+  xclip -selection clipboard < "$OUT"
+  echo; echo "Copied snapshot to clipboard: $OUT"
+elif command -v xsel >/dev/null 2>&1; then
+  xsel --clipboard --input < "$OUT"
+  echo; echo "Copied snapshot to clipboard: $OUT"
+else
+  echo; echo "Snapshot saved to: $OUT (clipboard tool not found)"
+fi

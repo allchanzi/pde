@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INTERVAL=2
+ONCE=0
+RESET=$'\033[0m'
+BOLD=$'\033[1m'
+DIM=$'\033[2m'
+CYAN=$'\033[36m'
+GREEN=$'\033[32m'
+YELLOW=$'\033[33m'
+RED=$'\033[31m'
+MAGENTA=$'\033[35m'
+
+color_port() {
+  case "$1" in
+    22|80|443|53|25|110|143|993|995)
+      printf "%s%s%s" "$GREEN" "$1" "$RESET"
+      ;;
+    3000|3001|4200|5173|8000|8080|8443|9000|9090)
+      printf "%s%s%s" "$YELLOW" "$1" "$RESET"
+      ;;
+    *)
+      printf "%s%s%s" "$CYAN" "$1" "$RESET"
+      ;;
+  esac
+}
+
+color_process() {
+  case "$1" in
+    sshd|docker|podman|k9s|nvim|zsh|bash)
+      printf "%s%s%s" "$MAGENTA" "$1" "$RESET"
+      ;;
+    *)
+      printf "%s%s%s" "$BOLD" "$1" "$RESET"
+      ;;
+  esac
+}
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  network-ports [--once] [--interval <seconds>]
+
+Options:
+  --once               Print one snapshot and exit
+  --interval <secs>    Refresh interval for watch mode (default: 2)
+  -h, --help           Show this help
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --once) ONCE=1; shift ;;
+    --interval) INTERVAL="${2:-}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+  esac
+done
+
+if ! [[ "$INTERVAL" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "Invalid interval: $INTERVAL" >&2
+  exit 1
+fi
+
+render_listening() {
+  local out
+  out="$(lsof -nP -iTCP -sTCP:LISTEN -FpcLn 2>/dev/null || true)"
+
+  printf "%s=== LISTENING TCP PORTS ===%s\n" "$BOLD" "$RESET"
+  if [[ -z "$out" ]]; then
+    printf "%sNo listening TCP sockets.%s\n" "$DIM" "$RESET"
+    return
+  fi
+
+  printf "%s%-8s %-8s %-22s %-12s %s%s\n" "$DIM" "PORT" "PID" "PROCESS" "USER" "BIND" "$RESET"
+  printf "%s\n" "$out" | awk '
+    BEGIN { OFS = "\t" }
+    /^p/ { pid = substr($0, 2); next }
+    /^c/ { command = substr($0, 2); next }
+    /^L/ { user = substr($0, 2); next }
+    /^n/ {
+      bind = substr($0, 2)
+      port = bind
+      sub(/^.*:/, "", port)
+      print port, pid, command, user, bind
+    }
+  ' | sort -t $'\t' -n -k1,1 -u | while IFS=$'\t' read -r port pid command user bind; do
+    printf "%-8s %-8s %-22s %-12s %s\n" "$(color_port "$port")" "$pid" "$(color_process "$command")" "$user" "$bind"
+  done
+}
+
+render_established() {
+  local out
+  out="$(lsof -nP -iTCP -sTCP:ESTABLISHED -FpcLn 2>/dev/null || true)"
+
+  printf "%s=== ESTABLISHED TCP CONNECTIONS ===%s\n" "$BOLD" "$RESET"
+  if [[ -z "$out" ]]; then
+    printf "%sNo established TCP connections.%s\n" "$DIM" "$RESET"
+    return
+  fi
+
+  printf "%s%-8s %-22s %-12s %-30s %s%s\n" "$DIM" "PID" "PROCESS" "USER" "LOCAL" "REMOTE" "$RESET"
+  printf "%s\n" "$out" | awk '
+    BEGIN { OFS = "\t" }
+    /^p/ { pid = substr($0, 2); next }
+    /^c/ { command = substr($0, 2); next }
+    /^L/ { user = substr($0, 2); next }
+    /^n/ {
+      split(substr($0, 2), endpoints, "->")
+      print pid, command, user, endpoints[1], endpoints[2]
+    }
+  ' | while IFS=$'\t' read -r pid command user local_addr remote_addr; do
+    printf "%-8s %-22s %-12s %-30s %s\n" "$pid" "$(color_process "$command")" "$user" "$local_addr" "$remote_addr"
+  done
+}
+
+render() {
+  if [[ "$ONCE" -eq 0 ]]; then
+    clear
+  fi
+  printf "%sNetwork snapshot:%s %s\n" "$BOLD" "$RESET" "$(date '+%Y-%m-%d %H:%M:%S')"
+  echo
+  render_listening
+  echo
+  render_established
+}
+
+if [[ "$ONCE" -eq 1 ]]; then
+  render
+  exit 0
+fi
+
+while true; do
+  render
+  sleep "$INTERVAL"
+done

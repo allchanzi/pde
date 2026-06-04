@@ -1,0 +1,542 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  LINK_TARGET="$(readlink "$SCRIPT_PATH")"
+  if [[ "$LINK_TARGET" == /* ]]; then
+    SCRIPT_PATH="$LINK_TARGET"
+  else
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+    SCRIPT_PATH="$SCRIPT_DIR/$LINK_TARGET"
+  fi
+done
+CORE_BIN_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+MAIN_PROJECT_DIR="$(cd "$CORE_BIN_DIR/../../.." && pwd)"
+BIN_DIR="$MAIN_PROJECT_DIR/bin"
+
+SESSION_BASE="pde"
+BASE_BRANCH=""
+
+BRANCH=""
+FORCE=0
+DELETE_WORKTREE=0
+SHOW_WORKTREE_ORIGIN=0
+LIST_WORKTREES=0
+LIST_ALL=0
+DELETE_ALL=0
+FROM_BRANCH=""
+
+usage() {
+  echo "Usage:"
+  echo "  pde"
+  echo "  pde --version"
+  echo "  pde create"
+  echo "  pde create <name> [path] [--type code|hardware|notes]"
+  echo "  pde open [project]"
+  echo "  pde list"
+  echo "  pde info [project]"
+  echo "  pde delete <project>"
+  echo "  pde run <project> <capability>"
+  echo "  pde -b <branch>"
+  echo "  pde -b <branch> --from <base-branch>"
+  echo "  pde -d -b <branch>"
+  echo "  pde -d --all"
+  echo "  pde -b <branch> -f"
+  echo "  pde --delete-worktree -b <branch>"
+  echo "  pde --worktree-origin -b <branch>"
+  echo "  pde --list"
+  echo "  pde --list-worktrees"
+  echo "  pde install"
+  echo "  pde install --reset"
+  echo "  pde update"
+  echo "  pde update --check"
+  echo "  pde theme"
+  echo "  pde process-analyze"
+  echo "  pde shortcuts-help [tmux|zellij]"
+  echo "  pde worktree [existing|branches|new]"
+}
+
+exec_projects() {
+  exec "$CORE_BIN_DIR/projects" "$@"
+}
+
+worktree_path_for_branch() {
+  git worktree list --porcelain | awk -v branch="refs/heads/$1" '
+    $1=="worktree" { path=$2 }
+    $1=="branch" && $2==branch { print path }
+  '
+}
+
+worktree_default_path_for_branch() {
+  local repo_name
+  local safe_branch
+  local worktree_root
+
+  repo_name="$(basename "$MAIN_PROJECT_DIR")"
+  safe_branch="${1//\//-}"
+  worktree_root="$(dirname "$MAIN_PROJECT_DIR")"
+  printf '%s/%s-%s\n' "$worktree_root" "$repo_name" "$safe_branch"
+}
+
+worktree_session_name_for_branch() {
+  local safe_branch
+
+  safe_branch="${1//\//-}"
+  printf '%s-%s\n' "$SESSION_BASE" "$safe_branch"
+}
+
+delete_local_branch_if_requested() {
+  if ! git show-ref --verify --quiet "refs/heads/$1"; then
+    return 0
+  fi
+
+  if [[ "$FORCE" -ne 1 ]]; then
+    echo "Branch '$1' already exists locally. Use -f to recreate it from a different base." >&2
+    exit 1
+  fi
+
+  git branch -D "$1" >/dev/null 2>&1 || {
+    echo "Could not delete local branch '$1'." >&2
+    exit 1
+  }
+}
+
+resolve_base_start_point() {
+  git fetch origin "$1" --prune 2>/dev/null || true
+
+  if git show-ref --verify --quiet "refs/remotes/origin/$1"; then
+    printf 'origin/%s\n' "$1"
+    return 0
+  fi
+
+  if git show-ref --verify --quiet "refs/heads/$1"; then
+    printf '%s\n' "$1"
+    return 0
+  fi
+
+  return 1
+}
+
+write_worktree_metadata() {
+  local worktree_path="$1"
+  local branch="$2"
+  local origin_ref="$3"
+  local origin_kind="$4"
+  local git_dir
+  local metadata_file
+
+  git_dir="$(git -C "$worktree_path" rev-parse --git-dir)"
+  metadata_file="$git_dir/pde-worktree-meta"
+
+  cat > "$metadata_file" <<EOF
+branch=$branch
+origin_ref=$origin_ref
+origin_kind=$origin_kind
+created_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+EOF
+}
+
+show_worktree_origin() {
+  local branch="$1"
+  local worktree_path
+  local git_dir
+  local metadata_file
+  local upstream
+
+  worktree_path="$(worktree_path_for_branch "$branch")"
+  if [[ -z "$worktree_path" ]]; then
+    echo "No worktree found for branch '$branch'." >&2
+    return 1
+  fi
+
+  git_dir="$(git -C "$worktree_path" rev-parse --git-dir)"
+  metadata_file="$git_dir/pde-worktree-meta"
+
+  echo "worktree: $worktree_path"
+  echo "branch:   $branch"
+
+  if [[ -f "$metadata_file" ]]; then
+    grep -E '^(origin_ref|origin_kind|created_at)=' "$metadata_file" | sed 's/^origin_ref=/origin:   /; s/^origin_kind=/kind:     /; s/^created_at=/created:  /'
+    return 0
+  fi
+
+  upstream="$(git -C "$worktree_path" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+  if [[ -n "$upstream" ]]; then
+    echo "origin:   $upstream"
+    echo "kind:     upstream"
+    return 0
+  fi
+
+  echo "origin:   unknown (worktree was created before metadata support)"
+}
+
+delete_worktree() {
+  local branch="$1"
+  local worktree_path
+  local session
+
+  worktree_path="$(worktree_path_for_branch "$branch")"
+  if [[ -z "$worktree_path" ]]; then
+    worktree_path="$(worktree_default_path_for_branch "$branch")"
+  fi
+
+  if [[ ! -e "$worktree_path" ]]; then
+    echo "No worktree path found for branch '$branch'." >&2
+    return 1
+  fi
+
+  session="$(worktree_session_name_for_branch "$branch")"
+  tmux kill-session -t "$session" 2>/dev/null || true
+
+  cd "$MAIN_PROJECT_DIR" || exit 1
+  git worktree remove --force "$worktree_path" 2>/dev/null || true
+  rm -rf "$worktree_path"
+  echo "Removed worktree '$branch' at $worktree_path"
+}
+
+list_worktrees() {
+  git worktree list
+}
+
+list_all() {
+  echo "== tmux sessions =="
+  if command -v tmux >/dev/null 2>&1; then
+    tmux list-sessions -F '#S' 2>/dev/null | grep -E "^${SESSION_BASE}(-|$)" || echo "(none)"
+  else
+    echo "(tmux not installed)"
+  fi
+
+  echo
+  echo "== zellij sessions =="
+  if command -v zellij >/dev/null 2>&1; then
+    zellij list-sessions --short --no-formatting 2>/dev/null | grep -E "^${SESSION_BASE}(-|$)" || echo "(none)"
+  else
+    echo "(zellij not installed)"
+  fi
+
+  echo
+  echo "== git worktrees =="
+  git worktree list || echo "(none)"
+}
+
+delete_all_worktrees() {
+  local current_path
+  local current_branch_ref
+  local current_branch
+  local session
+
+  while IFS=$'\t' read -r current_path current_branch_ref; do
+    if [[ "$current_path" == "$MAIN_PROJECT_DIR" ]]; then
+      continue
+    fi
+
+    current_branch="${current_branch_ref#refs/heads/}"
+    if [[ "$current_branch" != "$current_branch_ref" ]]; then
+      session="$(worktree_session_name_for_branch "$current_branch")"
+      tmux kill-session -t "$session" 2>/dev/null || true
+    fi
+
+    git worktree remove --force "$current_path" 2>/dev/null || true
+    rm -rf "$current_path"
+    echo "Removed worktree at $current_path"
+  done < <(
+    git worktree list --porcelain | awk '
+      $1=="worktree" { path=$2 }
+      $1=="branch" { print path "\t" $2 }
+    '
+  )
+}
+
+case "${1:-}" in
+  "")
+    if [[ -x "$MAIN_PROJECT_DIR/target/release/pde-tui" ]]; then
+      export PDE_ROOT="$MAIN_PROJECT_DIR"
+      exec "$MAIN_PROJECT_DIR/target/release/pde-tui"
+    fi
+    echo "pde-tui is not built. Run ./install.sh or cargo build --release --manifest-path pde_tui/Cargo.toml" >&2
+    exit 1
+    ;;
+  -v|--version)
+    exec "$MAIN_PROJECT_DIR/bin/pde-version"
+    ;;
+  create)
+    shift
+    if [[ $# -eq 0 ]]; then
+      if [[ -x "$MAIN_PROJECT_DIR/target/release/pde-tui" ]]; then
+        export PDE_ROOT="$MAIN_PROJECT_DIR"
+        exec "$MAIN_PROJECT_DIR/target/release/pde-tui"
+      fi
+      echo "pde-tui is not built. Run ./install.sh or cargo build --release --manifest-path pde_tui/Cargo.toml" >&2
+      exit 1
+    fi
+    exec_projects register "$@"
+    ;;
+  open)
+    shift
+    exec_projects open "$@"
+    ;;
+  list)
+    shift
+    exec_projects list "$@"
+    ;;
+  info)
+    shift
+    exec_projects info "$@"
+    ;;
+  delete)
+    shift
+    exec_projects delete "$@"
+    ;;
+  run)
+    shift
+    exec_projects run "$@"
+    ;;
+  install)
+    shift
+    exec "$MAIN_PROJECT_DIR/bin/setup" "$@"
+    ;;
+  update)
+    shift
+    exec "$MAIN_PROJECT_DIR/bin/pde-update" "$@"
+    ;;
+  theme)
+    shift
+    exec "$MAIN_PROJECT_DIR/bin/theme" "$@"
+    ;;
+  process-analyze)
+    shift
+    exec "$MAIN_PROJECT_DIR/bin/process-analyze" "$@"
+    ;;
+  shortcuts-help)
+    shift
+    exec "$MAIN_PROJECT_DIR/bin/pde-shortcuts-help" "$@"
+    ;;
+  worktree)
+    shift
+    exec "$CORE_BIN_DIR/pde-worktree" "$@"
+    ;;
+esac
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -b|--branch)  BRANCH="${2:-}"; shift 2 ;;
+    --from)       FROM_BRANCH="${2:-}"; shift 2 ;;
+    -d|--delete-worktree) DELETE_WORKTREE=1; shift ;;
+    --all) DELETE_ALL=1; shift ;;
+    -f|--force)   FORCE=1; shift ;;
+    --worktree-origin) SHOW_WORKTREE_ORIGIN=1; shift ;;
+    --list) LIST_ALL=1; shift ;;
+    --list-worktrees) LIST_WORKTREES=1; shift ;;
+    -h|--help)    usage; exit 0 ;;
+    *) echo "Unknown argument: $1"; usage; exit 1 ;;
+  esac
+done
+
+if [[ -n "$FROM_BRANCH" ]]; then
+  BASE_BRANCH="$FROM_BRANCH"
+fi
+
+cd "$MAIN_PROJECT_DIR" || exit 1
+
+if [[ "$LIST_WORKTREES" -eq 1 ]]; then
+  list_worktrees
+  exit 0
+fi
+
+if [[ "$LIST_ALL" -eq 1 ]]; then
+  list_all
+  exit 0
+fi
+
+if [[ "$DELETE_WORKTREE" -eq 1 ]]; then
+  if [[ "$DELETE_ALL" -eq 1 ]]; then
+    delete_all_worktrees
+    exit 0
+  fi
+
+  if [[ -z "$BRANCH" ]]; then
+    echo "-d/--delete-worktree requires -b <branch>" >&2
+    exit 1
+  fi
+
+  delete_worktree "$BRANCH"
+  exit 0
+fi
+
+if [[ "$SHOW_WORKTREE_ORIGIN" -eq 1 ]]; then
+  if [[ -z "$BRANCH" ]]; then
+    echo "--worktree-origin requires -b <branch>" >&2
+    exit 1
+  fi
+
+  show_worktree_origin "$BRANCH"
+  exit 0
+fi
+
+PROJECT_DIR="$MAIN_PROJECT_DIR"
+SESSION="$SESSION_BASE"
+
+if [[ -n "$BRANCH" ]]; then
+  EXISTING_PATH="$(worktree_path_for_branch "$BRANCH")"
+
+  if [[ -n "$EXISTING_PATH" && "$FORCE" -eq 0 ]]; then
+    PROJECT_DIR="$EXISTING_PATH"
+  else
+    if [[ -n "$EXISTING_PATH" && "$FORCE" -eq 1 ]]; then
+      echo "Removing existing worktree for '$BRANCH' at $EXISTING_PATH..."
+      git worktree remove --force "$EXISTING_PATH" || true
+      rm -rf "$EXISTING_PATH"
+    fi
+
+    REPO_NAME="$(basename "$MAIN_PROJECT_DIR")"
+    SAFE_BRANCH="${BRANCH//\//-}"
+    WORKTREE_ROOT="$(dirname "$MAIN_PROJECT_DIR")"
+    WORKTREE_PATH="$WORKTREE_ROOT/${REPO_NAME}-${SAFE_BRANCH}"
+    ORIGIN_REF=""
+    ORIGIN_KIND=""
+
+    if [[ -n "$BASE_BRANCH" ]]; then
+      START_POINT="$(resolve_base_start_point "$BASE_BRANCH")" || {
+        echo "Base branch '$BASE_BRANCH' not found locally or on origin." >&2
+        exit 1
+      }
+
+      delete_local_branch_if_requested "$BRANCH"
+
+      ORIGIN_REF="$START_POINT"
+      case "$START_POINT" in
+        origin/*) ORIGIN_KIND="base-remote-branch" ;;
+        *) ORIGIN_KIND="base-local-branch" ;;
+      esac
+
+      git worktree add "$WORKTREE_PATH" -b "$BRANCH" "$START_POINT"
+    else
+      git fetch origin "$BRANCH" --prune 2>/dev/null || true
+
+      if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+        ORIGIN_REF="$BRANCH"
+        ORIGIN_KIND="local-branch"
+        git worktree add "$WORKTREE_PATH" "$BRANCH"
+      elif git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
+        ORIGIN_REF="origin/$BRANCH"
+        ORIGIN_KIND="remote-branch"
+        git worktree add "$WORKTREE_PATH" -b "$BRANCH" "origin/$BRANCH"
+        git -C "$WORKTREE_PATH" branch --set-upstream-to "origin/$BRANCH" "$BRANCH" >/dev/null 2>&1 || true
+      else
+        ORIGIN_REF="$(git rev-parse --abbrev-ref HEAD)"
+        ORIGIN_KIND="current-head"
+        git worktree add "$WORKTREE_PATH" -b "$BRANCH"
+      fi
+    fi
+
+    write_worktree_metadata "$WORKTREE_PATH" "$BRANCH" "$ORIGIN_REF" "$ORIGIN_KIND"
+    PROJECT_DIR="$WORKTREE_PATH"
+  fi
+
+  SAFE_BRANCH="${BRANCH//\//-}"
+  SESSION="${SESSION_BASE}-${SAFE_BRANCH}"
+fi
+
+cd "$PROJECT_DIR" || exit 1
+
+# ── Multiplexer ───────────────────────────────────────────────────────────────
+
+PDE_PREFS_HELPER="$BIN_DIR/pde-prefs"
+if [[ ! -f "$PDE_PREFS_HELPER" && -f "$HOME/bin/pde-prefs" ]]; then
+  PDE_PREFS_HELPER="$HOME/bin/pde-prefs"
+fi
+if [[ -f "$PDE_PREFS_HELPER" ]]; then
+  # shellcheck source=/dev/null
+  source "$PDE_PREFS_HELPER"
+  pde_prefs_migrate
+  pde_prefs_load
+fi
+
+MULTIPLEXER="${MULTIPLEXER:-tmux}"
+AI_PROFILE="${AI_PROFILE:-codex+claude}"
+AI_COMMAND_1="${AI_COMMAND_1:-codex}"
+AI_COMMAND_2="${AI_COMMAND_2:-claude}"
+
+if [[ "$AI_PROFILE" == "none" ]]; then
+  AI_COMMAND_1=""
+  AI_COMMAND_2=""
+fi
+
+zellij_session_exists() {
+  zellij list-sessions --short --no-formatting 2>/dev/null | grep -Fxq "$1"
+}
+
+shorten_zellij_session_name() {
+  local candidate="$1"
+  local max_len=24
+  local hash
+  local prefix_len
+
+  if (( ${#candidate} <= max_len )); then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  hash="$(printf '%s' "$candidate" | shasum -a 1 | awk '{print substr($1,1,8)}')"
+  prefix_len=$((max_len - ${#hash} - 1))
+  printf '%s-%s\n' "${candidate:0:prefix_len}" "$hash"
+}
+
+if [[ "$MULTIPLEXER" == "zellij" ]]; then
+  SESSION="$(shorten_zellij_session_name "$SESSION")"
+  ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/pde.kdl"
+  [[ -f "$HOME/.config/zellij/layouts/pde.local.kdl" ]] && ZELLIJ_LAYOUT="$HOME/.config/zellij/layouts/pde.local.kdl"
+  if [[ -n "${ZELLIJ:-}" ]]; then
+    exec zellij action switch-session "$SESSION" -c "$PROJECT_DIR" -l "$ZELLIJ_LAYOUT"
+  elif zellij_session_exists "$SESSION"; then
+    exec zellij attach "$SESSION"
+  else
+    cd "$PROJECT_DIR"
+    exec zellij -s "$SESSION" -n "$ZELLIJ_LAYOUT"
+  fi
+  exit 0
+fi
+
+# ── tmux ──────────────────────────────────────────────────────────────────────
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+  tmux attach-session -t "$SESSION"
+  exit 0
+fi
+
+TMUX_LAYOUT_LOCAL="$HOME/.config/tmux/pde.local.sh"
+if [[ -f "$TMUX_LAYOUT_LOCAL" ]]; then
+  # shellcheck source=/dev/null
+  source "$TMUX_LAYOUT_LOCAL"
+  if declare -F setup_tmux_layout >/dev/null 2>&1; then
+    setup_tmux_layout "$SESSION" "$PROJECT_DIR"
+    tmux attach-session -t "$SESSION"
+    exit 0
+  fi
+fi
+
+WINDOW_INDEX=1
+tmux new-session -d -s "$SESSION" -n terminal -c "$PROJECT_DIR"
+WINDOW_INDEX=2
+
+tmux new-window -t "$SESSION":2 -n editor -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":2 "nvim ." C-m
+WINDOW_INDEX=3
+if [[ -n "$AI_COMMAND_1" ]]; then
+  tmux new-window -t "$SESSION":$WINDOW_INDEX -n ai -c "$PROJECT_DIR"
+  tmux send-keys -t "$SESSION":$WINDOW_INDEX "$AI_COMMAND_1" C-m
+  if [[ -n "$AI_COMMAND_2" ]]; then
+    tmux split-window -h -t "$SESSION":$WINDOW_INDEX
+    tmux send-keys -t "$SESSION":$WINDOW_INDEX.2 "$AI_COMMAND_2" C-m
+  fi
+  WINDOW_INDEX=$((WINDOW_INDEX + 1))
+fi
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n git -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":$WINDOW_INDEX "lazygit" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+tmux new-window -t "$SESSION":$WINDOW_INDEX -n k9s -c "$PROJECT_DIR"
+tmux send-keys -t "$SESSION":$WINDOW_INDEX "k9s" C-m
+WINDOW_INDEX=$((WINDOW_INDEX + 1))
+tmux select-window -t "$SESSION":1
+tmux attach-session -t "$SESSION"

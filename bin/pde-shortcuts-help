@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="${1:-all}"
+
+print_common() {
+  cat <<'EOF'
+PDE SHARED SHORTCUTS
+====================
+
+Most used in tmux and Zellij
+---------------------------
+  Ctrl-a h         Open this full shortcuts popup
+  Ctrl-a g         Show existing worktrees for current folder
+  Ctrl-a G         Show all branches for current folder
+  Ctrl-a n         Create new branch worktree from default base
+  Ctrl-a Tab       Open session switcher / session manager
+  Alt-h/j/k/l      Focus pane left/down/up/right
+  Alt-a/s/w/d      Focus pane left/down/up/right
+  Alt-1..7         Jump to tab/window by number
+  Alt-[ / Alt-]    Previous / next tab/window
+  Alt-Left/Right   Previous / next tab/window
+EOF
+}
+
+print_tmux() {
+  cat <<'EOF'
+PDE TMUX SHORTCUTS
+==================
+
+Most used
+---------
+  Ctrl-a           Prefix
+  Ctrl-a Ctrl-a    Send literal Ctrl-a to the running app
+  Ctrl-a Tab       Open session switcher
+  Ctrl-a g         Show existing worktrees for current folder
+  Ctrl-a G         Show all branches for current folder
+  Ctrl-a n         Create new branch worktree from default base
+  Ctrl-a h         Open this help popup
+  Ctrl-a r         Reload tmux config
+  Ctrl-a |         Split right
+  Ctrl-a -         Split down
+  Ctrl-a d         Detach session
+  Ctrl-a x         Kill current window
+  Ctrl-a X         Save all nvim panes, then kill session
+  Alt-h/j/k/l      Focus pane left/down/up/right
+  Alt-a/s/w/d      Focus pane left/down/up/right
+  Alt-1..7         Jump to window by number
+  Alt-[ / Alt-]    Previous / next window
+  Alt-Left/Right   Previous / next window
+
+Global
+------
+  Ctrl-a           Prefix
+  Ctrl-a Ctrl-a    Send literal Ctrl-a to the running app
+  Alt-h/j/k/l      Focus pane left/down/up/right
+  Alt-a/s/w/d      Focus pane left/down/up/right
+  Alt-1..7         Jump to window by number
+  Alt-[ / Alt-]    Previous / next window
+  Alt-Left/Right   Previous / next window
+
+Prefix mode (Ctrl-a ...)
+------------------------
+  |                Split right
+  -                Split down
+  d                Detach session
+  x                Kill current window
+  X                Save all nvim panes, then kill session
+  Tab              Open session switcher
+  g                Show existing worktrees for current folder
+  G                Show all branches for current folder
+  n                Create new branch worktree from default base
+  o                Open file path under cursor in nvim
+  r                Reload tmux config
+  h                Open this help popup
+  M                Open floating process analysis
+  P                Copy AI system snapshot to clipboard
+
+Resize
+------
+  a                Resize pane left
+  d                Resize pane right
+  w                Resize pane up
+  s                Resize pane down
+
+Notes
+-----
+  - tmux help is shown in a popup so you can keep context.
+  - Process analysis uses: pde process-analyze
+EOF
+}
+
+print_zellij() {
+  cat <<'EOF'
+PDE ZELLIJ SHORTCUTS
+====================
+
+Most used
+---------
+  Ctrl-a           Enter tmux mode / prefix layer
+  Ctrl-a Ctrl-a    Send literal Ctrl-a to the running app
+  Ctrl-a Tab       Open floating session manager
+  Ctrl-a g         Show existing worktrees for current folder
+  Ctrl-a G         Show all branches for current folder
+  Ctrl-a n         Create new branch worktree from default base
+  Ctrl-a h         Open this help pane
+  Ctrl-a |         Split right
+  Ctrl-a -         Split down
+  Ctrl-a c         New tab
+  Ctrl-a x         Close tab
+  Ctrl-a q         Close pane
+  Ctrl-a d         Detach session
+  Alt-h/j/k/l      Focus pane left/down/up/right
+  Alt-a/s/w/d      Focus pane left/down/up/right
+  Alt-1..7         Jump to tab by number
+  Alt-[ / Alt-]    Previous / next tab
+  Alt-Left/Right   Previous / next tab
+  Esc / Ctrl-c     Return to Normal from helper modes
+
+Global
+------
+  Ctrl-a           Enter tmux mode / prefix layer
+  Alt-h/j/k/l      Focus pane left/down/up/right
+  Alt-a/s/w/d      Focus pane left/down/up/right
+  Alt-1..7         Jump to tab by number
+  Alt-[ / Alt-]    Previous / next tab
+  Alt-Left/Right   Previous / next tab
+  Esc / Ctrl-c     Return to Normal from helper modes
+
+Tmux mode (Ctrl-a ...)
+----------------------
+  Ctrl-a           Send literal Ctrl-a to the running app
+  |                Split right
+  -                Split down
+  c                New tab
+  x                Close tab
+  q                Close pane
+  Tab              Open floating session manager
+  d                Detach session
+  X / Q            Quit session
+  a / w / s / D    Resize left / up / down / right
+  p                Enter Pane mode
+  t                Enter Tab mode
+  r                Enter Resize mode
+  m                Enter Move mode
+  [                Enter Scroll mode
+  o                Enter Session mode
+  g                Show existing worktrees for current folder
+  G                Show all branches for current folder
+  n                Create new branch worktree from default base
+  z                Toggle fullscreen
+  f                Toggle pane frames
+  ,                Rename tab
+  .                Rename pane
+  ?                Open floating session manager
+  h                Open this help pane
+  M                Open floating process analysis
+
+Pane mode
+---------
+  h/j/k/l          Move focus
+  Left/Right/Up/Down
+                   Move focus
+  n                New pane
+  r                New pane right
+  d                New pane down
+  x                Close pane
+  f                Toggle fullscreen
+  z                Toggle pane frames
+  w                Toggle floating panes
+  e                Toggle embed / floating for focused pane
+  p                Switch focus
+
+Tab mode
+--------
+  n                New tab
+  x                Close tab
+  h/l              Previous / next tab
+  Left/Right       Previous / next tab
+  [ / ]            Previous / next tab
+  r                Rename tab
+  s                Toggle sync tab
+  1..7             Jump to tab
+
+Resize mode
+-----------
+  h/j/k/l          Resize left/down/up/right
+  Left/Right/Up/Down
+                   Resize left/right/up/down
+  a/s/w/d          Resize left/down/up/right
+  -                Decrease size
+  = or +           Increase size
+
+Move mode
+---------
+  h/j/k/l          Move pane
+  Left/Right/Up/Down
+                   Move pane
+
+Scroll mode
+-----------
+  j/k              Scroll down/up
+  d/u              Half-page down/up
+  PageDown/Up      Page down/up
+  g / G            Top / bottom
+  e                Edit scrollback in editor
+
+Session mode
+------------
+  d                Detach
+  x / X / q / Q    Quit
+  w                Floating session manager
+
+Rename modes
+------------
+  Esc              Cancel rename tab / pane and return to Normal
+
+Notes
+-----
+  - The bottom status bar intentionally shows only a compact subset.
+  - This full popup is the reference cheatsheet.
+  - Process analysis uses: pde process-analyze
+EOF
+}
+
+case "$target" in
+  tmux) print_tmux ;;
+  zellij) print_zellij ;;
+  all)
+    print_common
+    echo
+    print_tmux
+    echo
+    print_zellij
+    ;;
+  *)
+    echo "Unknown target: $target" >&2
+    exit 1
+    ;;
+esac
