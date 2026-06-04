@@ -3,6 +3,7 @@ set -euo pipefail
 
 CONFIG_DIR="$(cd "$(dirname "$0")" && pwd)"
 PRESET="${PDE_PRESET:-default}"
+BIN_DIR="${PDE_BIN_DIR:-$HOME/bin}"
 
 usage() {
   cat <<USAGE
@@ -32,7 +33,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-mkdir -p "$HOME/bin" "$HOME/.config/pde"
+mkdir -p "$BIN_DIR" "$HOME/.config/pde"
 
 backup_if_needed() {
   local target="$1"
@@ -43,25 +44,25 @@ backup_if_needed() {
   fi
 }
 
-backup_if_needed "$HOME/bin/pde"
-backup_if_needed "$HOME/bin/pde-tui"
-backup_if_needed "$HOME/bin/projects"
-backup_if_needed "$HOME/bin/pde-worktree"
+backup_if_needed "$BIN_DIR/pde"
+backup_if_needed "$BIN_DIR/pde-tui"
+backup_if_needed "$BIN_DIR/projects"
+backup_if_needed "$BIN_DIR/pde-worktree"
 
-ln -sf "$CONFIG_DIR/bin/pde" "$HOME/bin/pde"
-ln -sf "$CONFIG_DIR/bin/projects" "$HOME/bin/projects"
-ln -sf "$CONFIG_DIR/bin/pde-worktree" "$HOME/bin/pde-worktree"
+ln -sf "$CONFIG_DIR/bin/pde" "$BIN_DIR/pde"
+ln -sf "$CONFIG_DIR/bin/projects" "$BIN_DIR/projects"
+ln -sf "$CONFIG_DIR/bin/pde-worktree" "$BIN_DIR/pde-worktree"
 
 if command -v cargo >/dev/null 2>&1; then
   echo "🦀 Building PDE TUI..."
   cargo build --release --manifest-path "$CONFIG_DIR/pde_tui/Cargo.toml"
-  ln -sf "$CONFIG_DIR/target/release/pde-tui" "$HOME/bin/pde-tui"
+  ln -sf "$CONFIG_DIR/target/release/pde-tui" "$BIN_DIR/pde-tui"
 else
   echo "❌ cargo not found. Install Rust, then re-run ./install.sh." >&2
   exit 1
 fi
 
-chmod +x "$HOME/bin/pde" "$HOME/bin/projects" "$HOME/bin/pde-worktree" "$HOME/bin/pde-tui"
+chmod +x "$BIN_DIR/pde" "$BIN_DIR/projects" "$BIN_DIR/pde-worktree" "$BIN_DIR/pde-tui"
 
 PRESET_INSTALL="$CONFIG_DIR/presets/$PRESET/install.sh"
 if [[ ! -x "$PRESET_INSTALL" ]]; then
@@ -75,4 +76,17 @@ fi
 
 echo ""
 echo "✅ PDE installed with preset: $PRESET"
-echo "Next: pde"
+echo "Installed commands in: $BIN_DIR"
+
+case ":$PATH:" in
+  *":$BIN_DIR:"*)
+    echo "Next: pde"
+    ;;
+  *)
+    echo "Next: add PDE to your shell PATH, then run pde"
+    echo "  echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc"
+    echo "  source ~/.zshrc"
+    echo "Or run it directly now:"
+    echo "  $BIN_DIR/pde"
+    ;;
+esac
