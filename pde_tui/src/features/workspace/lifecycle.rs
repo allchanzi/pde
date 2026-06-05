@@ -36,27 +36,27 @@ impl WorkspaceState {
         let pane_lines: Vec<Line<'static>> = match self.focus {
             FocusPane::Projects => vec![
                 Line::from("Enter/o Open selected project"),
-                Line::from("a      Add/register project"),
-                Line::from("d      Delete selected project registration"),
-                Line::from("j/k    Move selection"),
+                Line::from("a      [a]dd/register project"),
+                Line::from("d      [d]elete selected project registration"),
+                Line::from("j/k    Vim down/up: move selection"),
                 Line::from("gg/G   First/last item"),
                 Line::from("C-d/u  Page down/up"),
             ],
             FocusPane::GlobalSessions => vec![
                 Line::from("Enter/o Attach selected tmux/zellij session"),
-                Line::from("d      Kill/delete selected session"),
-                Line::from("j/k    Move selection"),
+                Line::from("d      [d]elete/kill selected session"),
+                Line::from("j/k    Vim down/up: move selection"),
             ],
             FocusPane::Workspaces => vec![
                 Line::from("Enter/o Open selected workspace/worktree"),
-                Line::from("a      Add new worktree"),
-                Line::from("d      Delete selected worktree"),
-                Line::from("j/k    Move selection"),
+                Line::from("a      [a]dd new worktree"),
+                Line::from("d      [d]elete selected worktree"),
+                Line::from("j/k    Vim down/up: move selection"),
             ],
             FocusPane::ProjectSessions => vec![
                 Line::from("Enter/o Attach selected project session"),
-                Line::from("d      Kill/delete selected session"),
-                Line::from("j/k    Move selection"),
+                Line::from("d      [d]elete/kill selected session"),
+                Line::from("j/k    Vim down/up: move selection"),
             ],
         };
 
@@ -69,14 +69,14 @@ impl WorkspaceState {
             vec![
                 Line::from(""),
                 Line::from(Span::styled("Global shortcuts", theme.title())),
-                Line::from("?                 Toggle this help"),
+                Line::from("?                 Help toggle"),
                 Line::from("Tab               Next pane"),
-                Line::from("h/l or Alt+h/l    Focus left/right"),
-                Line::from("Alt+j/k or Alt+s/w Focus down/up"),
-                Line::from("gg / G            First / last item"),
-                Line::from("Ctrl+d / Ctrl+u   Page down / up"),
-                Line::from("r                 Refresh"),
-                Line::from("q / Esc           Quit"),
+                Line::from("h/l or Alt+h/l    Vim left/right: focus left/right"),
+                Line::from("Alt+j/k or Alt+s/w Vim/WASD: focus down/up"),
+                Line::from("gg / G            Vim: first / last item"),
+                Line::from("Ctrl+d / Ctrl+u   Vim: page down / up"),
+                Line::from("r                 [r]efresh"),
+                Line::from("q / Esc           [q]uit / escape"),
             ],
         ]
         .into_iter()
