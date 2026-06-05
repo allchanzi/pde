@@ -42,7 +42,7 @@ impl CreateProjectState {
         }
         if self.field == Field::Layout {
             return match self.layout_mode {
-                LayoutEditMode::Navigate => "Create layout • n=[n]ew p/r/w • d=[d]elete p/r/w • i=[i]nsert/edit • ? help",
+                LayoutEditMode::Navigate => "Create layout • n=[n]ew p/r/w • p=[p]opup window • d=[d]elete p/r/w • i=[i]nsert/edit • ? help",
                 LayoutEditMode::EditCommand => "Create layout command edit • type command • Enter/Esc finish edit • ? help",
             };
         }
@@ -59,7 +59,8 @@ impl CreateProjectState {
             Line::from("?                 Help toggle"),
             Line::from(""),
             Line::from(Span::styled("Layout editor", theme.title())),
-            Line::from("n w / p           [n]ew [w]indow / [p]opup: empty or predefined tab"),
+            Line::from("n w               [n]ew [w]indow/tab via popup"),
+            Line::from("p                 [p]opup for empty/predefined window/tab"),
             Line::from("n r               [n]ew [r]ow inside current window"),
             Line::from("n p               [n]ew [p]ane in current row"),
             Line::from("d w               [d]elete selected [w]indow/tab"),
