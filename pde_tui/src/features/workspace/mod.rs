@@ -46,8 +46,6 @@ pub struct Project {
     pub slug: String,
     pub name: String,
     pub path: String,
-    #[serde(rename = "type")]
-    pub project_type: String,
     #[serde(default)]
     pub base_branch: Option<String>,
     #[serde(default)]
@@ -65,8 +63,6 @@ struct ProjectInspect {
 struct InspectProject {
     name: String,
     slug: String,
-    #[serde(rename = "type")]
-    project_type: String,
     path: String,
     #[serde(default)]
     base_branch: Option<String>,

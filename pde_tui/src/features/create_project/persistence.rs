@@ -1,36 +1,16 @@
 pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
     let slug = slugify(&spec.name);
-    let mut args = vec![
+    let args = vec![
         "register".into(),
         spec.name.clone(),
         spec.path.clone(),
-        "--type".into(),
-        spec.project_type.label().into(),
         "--slug".into(),
         slug.clone(),
+        "--base-branch".into(),
+        spec.base_branch.clone(),
+        "--layout-variant".into(),
+        "custom".into(),
     ];
-    match spec.project_type {
-        ProjectType::Code => args.extend([
-            "--base-branch".into(),
-            spec.base_branch.clone(),
-            "--layout-variant".into(),
-            "custom".into(),
-        ]),
-        ProjectType::Hardware => args.extend([
-            "--capability".into(),
-            "files".into(),
-            "--capability".into(),
-            "docs".into(),
-            "--capability".into(),
-            "mindmap".into(),
-        ]),
-        ProjectType::Notes => args.extend([
-            "--capability".into(),
-            "files".into(),
-            "--capability".into(),
-            "docs".into(),
-        ]),
-    }
     let output = Command::new(root.join("bin/core/pde/projects"))
         .args(args)
         .output()
@@ -41,9 +21,7 @@ pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    if spec.project_type == ProjectType::Code {
-        write_custom_layouts(&slug, &spec.layout)?;
-    }
+    write_custom_layouts(&slug, &spec.layout)?;
     Ok(slug)
 }
 

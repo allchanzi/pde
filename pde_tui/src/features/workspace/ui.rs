@@ -139,8 +139,8 @@ fn workspaces_title(detail: &ProjectInspect) -> String {
     let branch = detail.project.base_branch.as_deref().unwrap_or("-");
     let layout = detail.project.layout_variant.as_deref().unwrap_or("-");
     format!(
-        "Selected / Workspaces  {} ({}) [{}] branch:{branch} layout:{layout} path:{}",
-        detail.project.name, detail.project.slug, detail.project.project_type, detail.project.path
+        "Selected / Workspaces  {} ({}) branch:{branch} layout:{layout} path:{}",
+        detail.project.name, detail.project.slug, detail.project.path
     )
 }
 
@@ -151,7 +151,6 @@ fn project_item(project: &Project, theme: &UiTheme) -> ListItem<'static> {
         Line::from(vec![
             Span::styled(project.name.clone(), theme.title()),
             Span::raw(format!(" ({})", project.slug)),
-            Span::styled(format!("  [{}]", project.project_type), theme.kind()),
         ]),
         Line::from(format!(
             "    branch: {branch}  layout: {layout}  path: {}",

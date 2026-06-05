@@ -30,7 +30,7 @@ A terminal-first PDE app with a Rust TUI, CLI wrappers, and optional install pre
 - Minimal default install for PDE TUI/CLI plus tmux or Zellij verification
 - Optional `allc` preset for opinionated dotfiles, terminals, themes, shortcuts, and Neovim setup
 - Choice of `tmux` or `zellij`, with per-user preferences stored outside git
-- Registry-driven project picker (`projects`) with typed presets for code, hardware, and notes workspaces
+- Registry-driven project picker (`projects`) with git worktree/session support
 - Rust TUI (`pde`) with project/workspace/session management and native create flow
 - Optional AI panes and machine-local overrides without forking the tracked config
 
@@ -49,7 +49,7 @@ pde
 After that, register projects in the shared registry and open them from the TUI or CLI:
 
 ```bash
-projects register amplifier ~/projects/amplifier --type hardware
+projects register my-project ~/projects/my-project
 projects
 ```
 
@@ -79,7 +79,6 @@ pde/
 │       ├── themes/     Theme definitions
 │       ├── Brewfile
 │       └── Brewfile.macOS
-├── templates/          Project / note / hardware scaffolding templates
 └── install.sh          App installer + selected preset runner
 ```
 
@@ -337,13 +336,7 @@ To switch back to native Zellij command panes:
 
 ## Project registry — projects
 
-`projects` is the registry-driven project manager for this setup. It stores per-user project metadata outside git and opens the correct workspace preset based on project type.
-
-Supported project types:
-
-- `code` — developer-oriented layout with editor, git, optional AI, and branch/worktree support
-- `hardware` — files + nvim + docs + tools layout, with project-defined commands for schematic / PCB / 3D / datasheets / build flows
-- `notes` — lightweight notes/docs workspace
+`projects` is the registry-driven project manager for this setup. It stores per-user project metadata outside git and opens a developer-oriented workspace with editor, git, optional AI, and branch/worktree support.
 
 Project metadata is stored in:
 
@@ -358,14 +351,12 @@ projects                                   # picker + open selected project
 projects list                              # includes active tmux/zellij sessions per project
 projects open my-project
 projects open my-project -b feature/branch
-projects register my-project ~/git/my-project --type code
-projects register amplifier ~/projects/amplifier --type hardware
-projects delete amplifier
-projects info amplifier
-projects run amplifier schematic
+projects register my-project ~/git/my-project
+projects delete my-project
+projects info my-project
 ```
 
-Registry entries can include optional capabilities and custom commands. This is especially useful for hardware projects where `projects run <name> <capability>` can open named tools such as `schematic`, `mindmap`, `model3d`, or `datasheets`.
+Registry entries can include optional capabilities and custom commands. Use `projects run <name> <capability>` when you want a named command attached to a project.
 
 If you want a standalone alias in `~/bin`, `projects register` can create a wrapper launcher that delegates back to the registry entry. Existing hand-crafted launchers can still coexist with the registry.
 
@@ -619,8 +610,7 @@ Main entry-point for this dotfiles repo. With no arguments it opens the Rust TUI
 ```
 pde                                Open the Rust TUI
 pde create                         Open the TUI create flow
-pde create <name> <path> --type code|hardware|notes
-                                   Register a project via the registry CLI
+pde create <name> <path>          Register a project via the registry CLI
 pde open [project]                 Open a registered project
 pde list                           List registered projects
 pde info [project]                 Show project info
@@ -674,12 +664,10 @@ Update helper for this PDE repo. Supports:
 Registry-driven project picker and launcher. Supports:
 
 - interactive project picker
-- `code`, `hardware`, and `notes` presets
-- project registration with `--type`
 - optional launcher wrapper generation
 - project deletion via `projects delete <name>`
-- capability commands such as `projects run amplifier schematic`
-- code-project worktree flows via `projects open <name> -b <branch>`
+- optional capability commands via `projects run <name> <capability>`
+- git worktree flows via `projects open <name> -b <branch>`
 - active session listing in `projects list` and `projects info`
 - Rust TUI project picker/create flow via `pde`
 
