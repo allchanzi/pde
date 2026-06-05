@@ -20,6 +20,10 @@ impl CreateProjectState {
             Line::from(""),
         ];
         lines.extend(self.layout_lines(theme));
+        lines.extend([
+            Line::from(""),
+            Line::from(Span::styled(self.footer_help(), theme.muted())),
+        ]);
         if self.confirm == ConfirmState::ConfirmCreate {
             lines.extend([
                 Line::from(""),

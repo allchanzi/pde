@@ -125,12 +125,12 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
 }
 
 fn footer_lines(app: &App) -> Vec<Line<'static>> {
-    let shortcuts = match &app.mode {
-        Mode::Workspace => workspace::WorkspaceState::help().to_string(),
-        Mode::CreateProject(state) => state.footer_help().to_string(),
-    };
-
     let message = app.message.trim();
+    if matches!(app.mode, Mode::CreateProject(_)) {
+        return vec![Line::from(message.to_string())];
+    }
+
+    let shortcuts = workspace::WorkspaceState::help().to_string();
     if message.is_empty() || message == shortcuts {
         return vec![Line::from(shortcuts)];
     }
