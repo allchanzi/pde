@@ -4,12 +4,6 @@ impl CreateProjectState {
             Line::from(Span::styled("Create project", theme.help_title())),
             Line::from(""),
             field_line("Name", &self.name, self.field == Field::Name, theme),
-            field_line(
-                "Type",
-                self.project_type.label(),
-                self.field == Field::Type,
-                theme,
-            ),
             field_line("Path", &self.path, self.field == Field::Path, theme),
             field_line(
                 "Base branch",
@@ -28,7 +22,7 @@ impl CreateProjectState {
         lines.extend(self.layout_lines(theme));
         lines.extend([
             Line::from(""),
-            Line::from("Enter/Tab next • Shift+Tab prev • Space cycles type • ? help • Esc cancel"),
+            Line::from("Enter/Tab next • Shift+Tab prev • ? help • Esc cancel"),
             Line::from(
                 "Layout nav: [/] tab • hjkl select • i edit command • n p/r/w add • p presets",
             ),
@@ -60,7 +54,6 @@ impl CreateProjectState {
             Line::from(""),
             Line::from("Enter / Tab       Next field; create from Layout field"),
             Line::from("Shift+Tab         Previous field"),
-            Line::from("Space             Cycle project type"),
             Line::from("Esc               Cancel / leave command edit / close confirmation"),
             Line::from("?                 Toggle help"),
             Line::from(""),

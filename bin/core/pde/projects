@@ -17,19 +17,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-SUPPORTED_PROJECT_TYPES = ("code", "hardware", "notes")
-HARDWARE_CAPABILITIES = (
-    "files",
-    "docs",
-    "mindmap",
-    "schematic",
-    "pcb",
-    "model3d",
-    "datasheets",
-    "build",
-    "export",
-)
-NOTES_CAPABILITIES = ("files", "docs", "mindmap")
 PREFS_DEFAULT = Path(
     os.environ.get("PDE_PREFS_FILE_DEFAULT", "~/.config/pde/prefs")
 ).expanduser()
@@ -49,7 +36,7 @@ PROJECTS_HELP = """Usage:
   projects
   projects open <project> [-b <branch>] [--from <base-branch>] [-f]
   projects list
-  projects register [name] [path] [--type code|hardware|notes]
+  projects register [name] [path]
   projects delete <project> [--yes] [--keep-launcher]
   projects info <project>
   projects run <project> <capability>
@@ -57,8 +44,7 @@ PROJECTS_HELP = """Usage:
 Examples:
   projects
   projects open my-project -b feature/login
-  projects register amplifier ~/projects/amplifier --type hardware
-  projects run amplifier schematic
+  projects register my-project ~/projects/my-project
 """
 
 
@@ -79,7 +65,6 @@ class Project:
     slug: str
     name: str
     path: str
-    type: str
     launcher: str | None = None
     launcher_type: str | None = None
     base_branch: str | None = None
@@ -101,7 +86,6 @@ class Project:
             "slug": self.slug,
             "name": self.name,
             "path": self.path,
-            "type": self.type,
             "tags": self.tags,
             "capabilities": self.capabilities,
             "commands": self.commands,
@@ -119,10 +103,6 @@ class Project:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Project":
         """Build validated project from raw dict."""
-
-        project_type = str(data.get("type", "")).strip()
-        if project_type not in SUPPORTED_PROJECT_TYPES:
-            raise ValueError(f"Unsupported project type: {project_type or '<missing>'}")
 
         commands = data.get("commands", {})
         if not isinstance(commands, dict):
@@ -150,7 +130,6 @@ class Project:
             slug=slug,
             name=name,
             path=path,
-            type=project_type,
             launcher=str(data.get("launcher", "")).strip() or None,
             launcher_type=str(data.get("launcher_type", "")).strip() or None,
             base_branch=str(data.get("base_branch", "")).strip() or None,
@@ -422,14 +401,6 @@ def default_docs_command(project: Project) -> str:
 
     if project.commands.get("docs"):
         return project.commands["docs"]
-    if project.commands.get("mindmap") and project.type == "hardware":
-        docs_candidates = (
-            project.path_obj / "README.md",
-            project.path_obj / "docs" / "README.md",
-            project.path_obj / "docs" / "index.md",
-        )
-        if not any(candidate.exists() for candidate in docs_candidates):
-            return project.commands["mindmap"]
     for candidate in (
         project.path_obj / "README.md",
         project.path_obj / "docs" / "README.md",
@@ -491,46 +462,24 @@ def project_session_name(project: Project) -> str:
 def project_tabs(project: Project, runtime: RuntimePrefs, script_path: Path) -> list[TabSpec]:
     """Build session tabs for project."""
 
-    docs_command = f"{shlex.quote(str(script_path))} open-docs {shlex.quote(project.slug)}"
-    tool_shell_command = (
-        f"{shlex.quote(str(script_path))} tool-shell {shlex.quote(project.slug)}"
-    )
-    match project.type:
-        case "code":
-            tabs = [
-                TabSpec(name="terminal", focus=True),
-                TabSpec(name="editor", command="nvim ."),
-            ]
-            match ai_tab(runtime):
-                case TabSpec() as tab:
-                    tabs.append(tab)
-                case _:
-                    pass
-            tabs.extend(
-                [
-                    TabSpec(name="git", command=default_git_command()),
-                    TabSpec(name="term2"),
-                ]
-            )
-            if project.layout_variant == "full":
-                tabs.extend(default_monitor_tabs())
-            return tabs
-        case "notes":
-            return [
-                TabSpec(name="terminal", focus=True),
-                TabSpec(name="notes", command=docs_command),
-                TabSpec(name="files", command=default_files_command(project)),
-                TabSpec(name="git", command=default_git_command()),
-            ]
-        case "hardware":
-            return [
-                TabSpec(name="files", focus=True, command=default_files_command(project)),
-                TabSpec(name="nvim", command="nvim ."),
-                TabSpec(name="docs", command=docs_command),
-                TabSpec(name="tools", command=tool_shell_command),
-            ]
+    tabs = [
+        TabSpec(name="terminal", focus=True),
+        TabSpec(name="editor", command="nvim ."),
+    ]
+    match ai_tab(runtime):
+        case TabSpec() as tab:
+            tabs.append(tab)
         case _:
-            fail(f"Unsupported project type: {project.type}")
+            pass
+    tabs.extend(
+        [
+            TabSpec(name="git", command=default_git_command()),
+            TabSpec(name="term2"),
+        ]
+    )
+    if project.layout_variant == "full":
+        tabs.extend(default_monitor_tabs())
+    return tabs
 
 
 def custom_zellij_layout(project: Project) -> Path | None:
@@ -1230,17 +1179,10 @@ def list_projects(projects: list[Project]) -> None:
     }
     name_width = max(len(project.name) for project in projects)
     slug_width = max(len(project.slug) for project in projects)
-    type_width = max(len(project.type) for project in projects)
     sessions_width = max(len("SESSIONS"), *(len(sessions_by_slug[project.slug]) for project in projects))
-    print(
-        f"{'NAME':<{name_width}}  {'SLUG':<{slug_width}}  "
-        f"{'TYPE':<{type_width}}  {'SESSIONS':<{sessions_width}}  PATH"
-    )
+    print(f"{'NAME':<{name_width}}  {'SLUG':<{slug_width}}  {'SESSIONS':<{sessions_width}}  PATH")
     for project in projects:
-        print(
-            f"{project.name:<{name_width}}  {project.slug:<{slug_width}}  "
-            f"{project.type:<{type_width}}  {sessions_by_slug[project.slug]:<{sessions_width}}  {project.path}"
-        )
+        print(f"{project.name:<{name_width}}  {project.slug:<{slug_width}}  {sessions_by_slug[project.slug]:<{sessions_width}}  {project.path}")
 
 
 def print_project_info(project: Project) -> None:
@@ -1253,7 +1195,6 @@ def print_project_info(project: Project) -> None:
     )
     print(f"name:         {project.name}")
     print(f"slug:         {project.slug}")
-    print(f"type:         {project.type}")
     print(f"path:         {project.path}")
     print(f"sessions:     {', '.join(sessions) if sessions else '-'}")
     if project.base_branch:
@@ -1289,7 +1230,7 @@ def print_project_inspect_json(project: Project) -> None:
         }
     ]
 
-    if project.path_obj.exists() and project.type == "code" and is_git_repo(project.path_obj):
+    if project.path_obj.exists() and is_git_repo(project.path_obj):
         root_path = str(project.path_obj.resolve())
         for current_path, current_branch in git_worktree_pairs(project.path_obj):
             if current_path == root_path or not current_branch.startswith("refs/heads/"):
@@ -1315,7 +1256,6 @@ def print_project_inspect_json(project: Project) -> None:
                 "project": {
                     "name": project.name,
                     "slug": project.slug,
-                    "type": project.type,
                     "path": project.path,
                     "base_branch": project.base_branch,
                     "layout_variant": project.layout_variant,
@@ -1331,10 +1271,7 @@ def print_project_inspect_json(project: Project) -> None:
 def list_picker_lines(projects: list[Project]) -> list[str]:
     """Return picker display lines."""
 
-    return [
-        f"{project.slug}\t[{project.type}]\t{project.name}\t{project.path}"
-        for project in projects
-    ]
+    return [f"{project.slug}\t{project.name}\t{project.path}" for project in projects]
 
 
 def pick_one_from_list(prompt: str, lines: list[str]) -> str:
@@ -1442,41 +1379,6 @@ def prompt_yes_no(prompt: str, default: bool = True) -> bool:
         return default
     return answer in {"y", "yes"}
 
-
-def prompt_project_type(default: str | None = None) -> str:
-    """Prompt for project type."""
-
-    current = default or "code"
-    lines = [current, *[item for item in SUPPORTED_PROJECT_TYPES if item != current]]
-    selected = pick_one_from_list("Project type", lines)
-    return selected.split("\t", 1)[0].strip()
-
-
-def prompt_capabilities(project_type: str) -> list[str]:
-    """Prompt for capabilities."""
-
-    match project_type:
-        case "hardware":
-            options = list(HARDWARE_CAPABILITIES)
-            defaults = ["files", "docs", "mindmap"]
-        case "notes":
-            options = list(NOTES_CAPABILITIES)
-            defaults = ["files", "docs"]
-        case _:
-            return []
-    return pick_many_from_list("Capabilities", options, defaults)
-
-
-def default_capabilities(project_type: str) -> list[str]:
-    """Return default capabilities for project type."""
-
-    match project_type:
-        case "hardware":
-            return ["files", "docs", "mindmap"]
-        case "notes":
-            return ["files", "docs"]
-        case _:
-            return []
 
 
 def create_launcher_wrapper(
@@ -1611,8 +1513,6 @@ def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
         fail("Project name is required in non-interactive mode.")
     if arguments.path is None and not interactive:
         fail("Project path is required in non-interactive mode.")
-    if arguments.type is None and not interactive:
-        fail("Project type is required in non-interactive mode.")
 
     name = arguments.name or prompt_text("Project name")
     if any(project.name.lower() == name.lower() for project in projects):
@@ -1628,64 +1528,39 @@ def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
     ):
         project_path.mkdir(parents=True, exist_ok=True)
 
-    project_type = arguments.type or prompt_project_type()
-    if project_type not in SUPPORTED_PROJECT_TYPES:
-        fail(f"Unsupported project type: {project_type}")
-
     slug = next_unique_slug(projects, arguments.slug or name)
     capabilities = arguments.capability or []
     commands = parsed_command_pairs(arguments.command_pairs)
     layout_variant = arguments.layout_variant
     base_branch = arguments.base_branch
 
-    if project_type == "code":
-        repo_base_branch = detected_base_branch(project_path) if is_git_repo(project_path) else ""
-        if base_branch is None:
-            if interactive:
-                base_branch = prompt_text(
-                    "Default base branch",
-                    repo_base_branch or "main",
-                    allow_empty=True,
-                )
-            else:
-                base_branch = repo_base_branch or "main"
-        if repo_base_branch and not resolve_base_start_point(project_path, base_branch):
-            fail(
-                (
-                    f"Base branch '{base_branch}' was not found for repository {project_path}. "
-                    f"Detected default branch: '{repo_base_branch}'."
-                )
-            )
-        if layout_variant is None:
-            if interactive:
-                layout_variant = pick_one_from_list("Code layout", ["minimal", "full", "custom"]).strip()
-            else:
-                layout_variant = "minimal"
-        capabilities = []
-    else:
-        if not capabilities:
-            capabilities = (
-                prompt_capabilities(project_type)
-                if interactive
-                else default_capabilities(project_type)
-            )
-        for capability in capabilities:
-            if capability in commands:
-                continue
-            if not interactive:
-                continue
-            entered = prompt_text(
-                f"Command for {capability} (leave blank for default/manual use)",
+    repo_base_branch = detected_base_branch(project_path) if is_git_repo(project_path) else ""
+    if base_branch is None:
+        if interactive:
+            base_branch = prompt_text(
+                "Default base branch",
+                repo_base_branch or "main",
                 allow_empty=True,
             )
-            if entered:
-                commands[capability] = entered
+        else:
+            base_branch = repo_base_branch or "main"
+    if repo_base_branch and not resolve_base_start_point(project_path, base_branch):
+        fail(
+            (
+                f"Base branch '{base_branch}' was not found for repository {project_path}. "
+                f"Detected default branch: '{repo_base_branch}'."
+            )
+        )
+    if layout_variant is None:
+        if interactive:
+            layout_variant = pick_one_from_list("Layout", ["minimal", "full", "custom"]).strip()
+        else:
+            layout_variant = "minimal"
 
     project = Project(
         slug=slug,
         name=name,
         path=str(project_path),
-        type=project_type,
         base_branch=base_branch or None,
         layout_variant=layout_variant or None,
         capabilities=capabilities,
@@ -1710,7 +1585,7 @@ def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
 
     projects.append(project)
     save_registry(projects)
-    print(f"Registered project '{project.name}' ({project.type})")
+    print(f"Registered project '{project.name}'")
     print(f"  slug   → {project.slug}")
     print(f"  path   → {project.path}")
     print(f"  file   → {PROJECTS_FILE}")
@@ -1749,7 +1624,7 @@ def tool_shell(project: Project) -> None:
     """Print project tool summary."""
 
     ensure_project_path(project)
-    print(f"Project: {project.name} [{project.type}]")
+    print(f"Project: {project.name}")
     print(f"Path:    {project.path}")
     if project.capabilities:
         print(f"Capabilities: {', '.join(project.capabilities)}")
@@ -1795,17 +1670,7 @@ def open_project(
 ) -> None:
     """Open project in configured multiplexer."""
 
-    project_dir: Path
-    session_name: str
-
-    if project.type == "code":
-        project_dir, session_name = project_dir_for_code_open(project, branch, from_branch, force)
-    else:
-        if branch or from_branch or force:
-            fail(f"Branch/worktree flags are only supported for code projects.")
-        ensure_project_path(project)
-        project_dir = project.path_obj
-        session_name = project_session_name(project)
+    project_dir, session_name = project_dir_for_code_open(project, branch, from_branch, force)
 
     tabs = project_tabs(project, runtime, script_path)
     if runtime.multiplexer == "zellij":
@@ -1855,7 +1720,6 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser.add_argument("name", nargs="?")
     register_parser.add_argument("path", nargs="?")
     register_parser.add_argument("--slug")
-    register_parser.add_argument("--type", choices=SUPPORTED_PROJECT_TYPES)
     register_parser.add_argument("--base-branch")
     register_parser.add_argument("--layout-variant", choices=("minimal", "full", "custom"))
     register_parser.add_argument("--capability", action="append", default=[])
@@ -1962,8 +1826,6 @@ def main(argv: list[str] | None = None) -> None:
                 return
             project = find_project(projects, namespace.project)
             if namespace.list_worktrees or namespace.delete_worktree or namespace.worktree_origin:
-                if project.type != "code":
-                    fail("Worktree actions are only supported for code projects.")
                 ensure_project_path(project)
                 if not is_git_repo(project.path_obj):
                     fail(f"Project '{project.name}' is not a git repository.")

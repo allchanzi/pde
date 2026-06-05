@@ -17,23 +17,14 @@ use crate::{app::Effect, shared::ui::theme::UiTheme};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Field {
     Name,
-    Type,
     Path,
     BaseBranch,
     Layout,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProjectType {
-    Code,
-    Hardware,
-    Notes,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateProjectSpec {
     pub name: String,
-    pub project_type: ProjectType,
     pub path: String,
     pub base_branch: String,
     pub layout: Vec<LayoutTab>,
@@ -105,7 +96,6 @@ const NEW_PANE_CHOICES: [NewPaneChoice; 7] = [
 pub struct CreateProjectState {
     field: Field,
     name: String,
-    project_type: ProjectType,
     path: String,
     base_branch: String,
     layout: Vec<LayoutTab>,

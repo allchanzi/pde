@@ -3,7 +3,6 @@ impl CreateProjectState {
         Self {
             field: Field::Name,
             name: String::new(),
-            project_type: ProjectType::Code,
             path: default_path("project"),
             base_branch: "main".into(),
             layout: vec![LayoutTab {
@@ -58,10 +57,6 @@ impl CreateProjectState {
             }
             KeyCode::Backspace => {
                 self.backspace();
-                Effect::None
-            }
-            KeyCode::Char(' ') if self.field == Field::Type => {
-                self.project_type = self.project_type.next();
                 Effect::None
             }
             KeyCode::Char('h') | KeyCode::Left if self.field == Field::Layout => {

@@ -32,7 +32,7 @@ usage() {
   echo "  pde"
   echo "  pde --version"
   echo "  pde create"
-  echo "  pde create <name> [path] [--type code|hardware|notes]"
+  echo "  pde create <name> [path]"
   echo "  pde open [project]"
   echo "  pde list"
   echo "  pde info [project]"

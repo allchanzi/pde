@@ -12,8 +12,7 @@ impl CreateProjectState {
 
     fn next_field(&mut self) -> Effect {
         self.field = match self.field {
-            Field::Name => Field::Type,
-            Field::Type => Field::Path,
+            Field::Name => Field::Path,
             Field::Path => Field::BaseBranch,
             Field::BaseBranch => Field::Layout,
             Field::Layout => return self.request_confirmation(),
@@ -24,8 +23,7 @@ impl CreateProjectState {
     fn previous_field(&mut self) {
         self.field = match self.field {
             Field::Name => Field::Name,
-            Field::Type => Field::Name,
-            Field::Path => Field::Type,
+            Field::Path => Field::Name,
             Field::BaseBranch => Field::Path,
             Field::Layout => Field::BaseBranch,
         };
@@ -45,7 +43,6 @@ impl CreateProjectState {
     fn submit(&self) -> Effect {
         Effect::CreateProjectSubmit(CreateProjectSpec {
             name: self.name.trim().into(),
-            project_type: self.project_type,
             path: self.path.trim().into(),
             base_branch: self.base_branch.trim().into(),
             layout: self.layout.clone(),
@@ -182,7 +179,6 @@ impl CreateProjectState {
             Field::Path => self.path.push(character),
             Field::BaseBranch => self.base_branch.push(character),
             Field::Layout => self.current_pane_mut().command.push(character),
-            Field::Type => {}
         }
         self.update_default_path();
     }
@@ -199,7 +195,6 @@ impl CreateProjectState {
                 self.base_branch.pop();
             }
             Field::Layout => {}
-            Field::Type => {}
         }
         self.update_default_path();
     }

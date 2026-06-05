@@ -115,20 +115,3 @@ impl NewPaneChoice {
         }
     }
 }
-
-impl ProjectType {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Code => "code",
-            Self::Hardware => "hardware",
-            Self::Notes => "notes",
-        }
-    }
-    fn next(self) -> Self {
-        match self {
-            Self::Code => Self::Hardware,
-            Self::Hardware => Self::Notes,
-            Self::Notes => Self::Code,
-        }
-    }
-}
