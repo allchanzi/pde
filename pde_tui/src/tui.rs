@@ -105,7 +105,7 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
 
     if let Mode::CreateProject(state) = &app.mode {
         let area = centered_rect(74, 70, frame.area());
-        create_project::render(frame, area, state, &app.theme);
+        create_project::render(frame, area, state, &app.theme, !app.show_help);
     }
 
     frame.render_widget(
