@@ -586,6 +586,11 @@ write_p10k_theme() {
   _p10k_set POWERLEVEL9K_VCS_MODIFIED_FOREGROUND "$YELLOW"
   _p10k_set POWERLEVEL9K_STATUS_OK_FOREGROUND "$GREEN"
   _p10k_set POWERLEVEL9K_STATUS_OK_PIPE_FOREGROUND "$GREEN"
+  _p10k_set POWERLEVEL9K_STATUS_ERROR_FOREGROUND "$RED"
+  _p10k_set POWERLEVEL9K_STATUS_ERROR_SIGNAL_FOREGROUND "$RED"
+  _p10k_set POWERLEVEL9K_STATUS_ERROR_PIPE_FOREGROUND "$RED"
+  _p10k_set POWERLEVEL9K_COMMAND_EXECUTION_TIME_FOREGROUND "$SUBTEXT0"
+  _p10k_set POWERLEVEL9K_COMMAND_EXECUTION_TIME_PREFIX "%F{$SUBTLE}took "
   _p10k_set POWERLEVEL9K_BACKGROUND_JOBS_FOREGROUND "$BLUE"
   _p10k_set POWERLEVEL9K_DIRENV_FOREGROUND "$GREEN"
   _p10k_set POWERLEVEL9K_ASDF_FOREGROUND "$BLUE"
@@ -597,6 +602,14 @@ write_p10k_theme() {
   _p10k_set POWERLEVEL9K_NVM_FOREGROUND "$GREEN"
   _p10k_set POWERLEVEL9K_NODEENV_FOREGROUND "$GREEN"
   _p10k_set POWERLEVEL9K_TIME_FOREGROUND "$TEXT"
+  _p10k_set POWERLEVEL9K_TIME_PREFIX "%F{$SUBTLE}at "
+  _p10k_set POWERLEVEL9K_VI_MODE_BACKGROUND "$BASE"
+  _p10k_set POWERLEVEL9K_VI_MODE_NORMAL_FOREGROUND "$GREEN"
+  _p10k_set POWERLEVEL9K_VI_MODE_VISUAL_FOREGROUND "$LAVENDER"
+  _p10k_set POWERLEVEL9K_VI_MODE_OVERWRITE_FOREGROUND "$YELLOW"
+  _p10k_set POWERLEVEL9K_VI_MODE_INSERT_FOREGROUND "$BLUE"
+  _p10k_set POWERLEVEL9K_LEFT_SUBSEGMENT_SEPARATOR "%F{$SURFACE2}"
+  _p10k_set POWERLEVEL9K_RIGHT_SUBSEGMENT_SEPARATOR "%F{$SURFACE2}"
   for state in VIINS VICMD VIVIS VIOWR; do
     _p10k_set "POWERLEVEL9K_PROMPT_CHAR_OK_${state}_FOREGROUND" "$TEXT"
     _p10k_set "POWERLEVEL9K_PROMPT_CHAR_ERROR_${state}_FOREGROUND" "$RED"
@@ -614,6 +627,14 @@ write_p10k_theme() {
   _sed_i "s|^      local   modified=.*|      local   modified='%F{${YELLOW}}'  # theme yellow foreground|" "$p10k"
   _sed_i "s|^      local  untracked=.*|      local  untracked='%F{${BLUE}}'  # theme blue foreground|" "$p10k"
   _sed_i "s|^      local conflicted=.*|      local conflicted='%F{${RED}}'  # theme red foreground|" "$p10k"
+
+  # Replace hardcoded 256-color prompt escapes from generated p10k configs.
+  _sed_i "s|%244Ftook |%F{${SUBTLE}}took |g" "$p10k"
+  _sed_i "s|%244Fat |%F{${SUBTLE}}at |g" "$p10k"
+  _sed_i "s|%242F\\uE0B1|%F{${SURFACE2}}|g" "$p10k"
+  _sed_i "s|%242F\\uE0B3|%F{${SURFACE2}}|g" "$p10k"
+  _sed_i "s|%F{${SURFACE2}}uE0B1|%F{${SURFACE2}}|g" "$p10k"
+  _sed_i "s|%F{${SURFACE2}}uE0B3|%F{${SURFACE2}}|g" "$p10k"
 
   unset -f _p10k_set
 }
