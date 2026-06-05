@@ -20,6 +20,7 @@ impl CreateProjectState {
             selected_row: 0,
             selected_pane: 0,
             pending_n: false,
+            pending_delete: false,
             pending_preset: false,
             new_pane_picker: None,
             layout_mode: LayoutEditMode::Navigate,
@@ -44,6 +45,10 @@ impl CreateProjectState {
         if self.pending_n {
             self.pending_n = false;
             return Ok(self.handle_pending_n(key.code));
+        }
+        if self.pending_delete {
+            self.pending_delete = false;
+            return Ok(self.handle_pending_delete(key.code));
         }
 
         Ok(match key.code {
@@ -109,6 +114,10 @@ impl CreateProjectState {
             KeyCode::Char('n') if self.field == Field::Layout => {
                 self.pending_n = true;
                 Effect::Message("Layout: n p=new pane, n r=new row, n w=new window/tab".into())
+            }
+            KeyCode::Char('d') if self.field == Field::Layout => {
+                self.pending_delete = true;
+                Effect::Message("Layout delete: d p=pane, d r=row, d w=window/tab".into())
             }
             KeyCode::Char(character) if self.field != Field::Layout => {
                 self.push_char(character);
