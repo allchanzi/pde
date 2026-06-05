@@ -4,11 +4,14 @@ set -euo pipefail
 CONFIG_DIR="$(cd "$(dirname "$0")" && pwd)"
 PRESET="${PDE_PRESET:-default}"
 BIN_DIR="${PDE_BIN_DIR:-$HOME/bin}"
+PRESET_ARGS=()
 
 usage() {
   cat <<USAGE
 Usage:
-  ./install.sh [--preset default|allc]
+  ./install.sh [--preset default|allc] [--force-theme|--no-theme]
+
+Theme flags are only used by --preset allc.
 
 Installs the PDE app/wrappers and runs the selected preset.
 Default preset only verifies tmux/zellij and creates empty PDE config.
@@ -22,6 +25,10 @@ while [[ $# -gt 0 ]]; do
       [[ -n "$PRESET" ]] || { usage; exit 1; }
       shift 2
       ;;
+    --force-theme|--no-theme)
+      PRESET_ARGS+=("$1")
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -32,6 +39,12 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$PRESET" != "allc" && "${#PRESET_ARGS[@]}" -gt 0 ]]; then
+  echo "❌ Theme flags are only supported with --preset allc" >&2
+  usage >&2
+  exit 1
+fi
 
 mkdir -p "$BIN_DIR" "$HOME/.config/pde"
 
@@ -77,7 +90,7 @@ if [[ ! -x "$PRESET_INSTALL" ]]; then
   exit 1
 fi
 
-"$PRESET_INSTALL"
+"$PRESET_INSTALL" "${PRESET_ARGS[@]}"
 
 echo ""
 echo "✅ PDE installed with preset: $PRESET"

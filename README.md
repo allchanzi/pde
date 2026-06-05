@@ -125,7 +125,9 @@ pde
 Opinionated `allc` preset:
 
 ```bash
-./install.sh --preset allc
+./install.sh --preset allc                  # preserve current theme state
+./install.sh --preset allc --force-theme    # re-apply presets/allc/themes/current
+./install.sh --preset allc --no-theme       # explicit theme skip
 ```
 
 Or run a preset directly after installing the app:
@@ -142,7 +144,7 @@ Or run a preset directly after installing the app:
 3. Runs `presets/<name>/install.sh`
 
 `presets/default` only creates empty PDE config and verifies `tmux`/`zellij`.
-`presets/allc` installs/links the tracked dotfiles and preferred tools.
+`presets/allc` installs/links the tracked dotfiles and preferred tools. By default it preserves theme state; pass `--force-theme` or set `PDE_ALLC_THEME_MODE=force` when you want installation to re-apply the tracked current theme.
 
 Runtime/log/state data is intentionally kept outside the repo:
 
@@ -198,6 +200,21 @@ For the terminal emulators and TUIs below, restart the app if you are unsure whe
 ## Theme system
 
 Themes are bash variable files in `presets/allc/themes/`. The `current` symlink points to whichever theme is active.
+
+
+### Install-time theme behavior
+
+The `allc` preset links theme-managed configs but does not force re-apply the current theme by default. This avoids unexpected changes to an existing Powerlevel10k/terminal theme during reinstall.
+
+```bash
+./install.sh --preset allc                  # preserve theme state
+./install.sh --preset allc --force-theme    # force apply presets/allc/themes/current
+./install.sh --preset allc --no-theme       # explicit skip
+
+PDE_ALLC_THEME_MODE=force ./install.sh --preset allc
+```
+
+Use `theme apply <name>` whenever you want to intentionally rewrite generated theme files.
 
 ### Picking a theme
 

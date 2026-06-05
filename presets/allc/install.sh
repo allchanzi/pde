@@ -1,11 +1,56 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "🚀 Starting setup..."
-
 PRESET_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$(cd "$PRESET_DIR/../.." && pwd)"
 OS="$(uname -s)"
+THEME_MODE="${PDE_ALLC_THEME_MODE:-preserve}"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  presets/allc/install.sh [--force-theme|--no-theme]
+
+Theme modes:
+  preserve / --no-theme   Link configs but do not re-apply theme-generated files.
+  force / --force-theme   Apply presets/allc/themes/current during install.
+
+Environment:
+  PDE_ALLC_THEME_MODE=preserve|force|skip
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force-theme)
+      THEME_MODE="force"
+      shift
+      ;;
+    --no-theme|--skip-theme)
+      THEME_MODE="skip"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$THEME_MODE" in
+  preserve|skip|force) ;;
+  *)
+    echo "❌ Unsupported PDE_ALLC_THEME_MODE: $THEME_MODE" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
+
+echo "🚀 Starting setup..."
 
 detect_brew_bin() {
   if command -v brew >/dev/null 2>&1; then
@@ -256,9 +301,17 @@ echo "ℹ️ Skipping PDE app build in allc preset; run root ./install.sh for ap
 # Apply active theme
 ########################################
 
-if [[ -x "$HOME/bin/theme" ]]; then
-  PDE_THEMES_DIR="$PRESET_DIR/themes" "$HOME/bin/theme" apply current >/dev/null 2>&1 || true
-fi
+case "$THEME_MODE" in
+  force)
+    if [[ -x "$HOME/bin/theme" ]]; then
+      echo "🎨 Applying allc current theme..."
+      PDE_THEMES_DIR="$PRESET_DIR/themes" "$HOME/bin/theme" apply current >/dev/null 2>&1 || true
+    fi
+    ;;
+  preserve|skip)
+    echo "🎨 Preserving theme state. Use --force-theme or PDE_ALLC_THEME_MODE=force to apply presets/allc/themes/current."
+    ;;
+esac
 
 if [[ -x "$HOME/bin/pde-prefs" ]]; then
   # shellcheck source=/dev/null
