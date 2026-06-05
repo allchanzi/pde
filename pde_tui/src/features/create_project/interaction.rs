@@ -21,7 +21,6 @@ impl CreateProjectState {
             selected_pane: 0,
             pending_n: false,
             pending_delete: false,
-            pending_preset: false,
             new_pane_picker: None,
             layout_mode: LayoutEditMode::Navigate,
             confirm: ConfirmState::Editing,
@@ -37,10 +36,6 @@ impl CreateProjectState {
         }
         if self.field == Field::Layout && self.layout_mode == LayoutEditMode::EditCommand {
             return Ok(self.handle_layout_edit_key(key.code));
-        }
-        if self.pending_preset {
-            self.pending_preset = false;
-            return Ok(self.handle_pending_preset(key.code));
         }
         if self.pending_n {
             self.pending_n = false;
@@ -113,7 +108,7 @@ impl CreateProjectState {
             KeyCode::Char('p') if self.field == Field::Layout => self.open_new_pane_picker(),
             KeyCode::Char('n') if self.field == Field::Layout => {
                 self.pending_n = true;
-                Effect::Message("Layout: n p=new pane, n r=new row, n w=new window/tab".into())
+                Effect::Message("Layout: n p=new pane, n r=new row, n w=window preset popup".into())
             }
             KeyCode::Char('d') if self.field == Field::Layout => {
                 self.pending_delete = true;

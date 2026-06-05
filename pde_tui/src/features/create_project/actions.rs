@@ -54,15 +54,15 @@ impl CreateProjectState {
             return Effect::None;
         }
         match key {
-            KeyCode::Char('w') => {
-                self.add_window();
-                Effect::Message("Added window/tab".into())
-            }
+            KeyCode::Char('w') => self.open_new_pane_picker(),
             KeyCode::Char('r') => {
                 self.add_row();
                 Effect::Message("Added row".into())
             }
-            KeyCode::Char('p') => self.open_new_pane_picker(),
+            KeyCode::Char('p') => {
+                self.add_pane();
+                Effect::Message("Added empty pane/cell".into())
+            }
             _ => Effect::None,
         }
     }
@@ -131,8 +131,8 @@ impl CreateProjectState {
         self.new_pane_picker = None;
         match choice {
             NewPaneChoice::EmptyPane => {
-                self.add_pane();
-                Effect::Message("Added empty pane/cell".into())
+                self.add_window();
+                Effect::Message("Added empty window/tab".into())
             }
             NewPaneChoice::EditorTab => self.add_preset_tab(editor_tab()),
             NewPaneChoice::IdeTab => self.add_preset_tab(ide_tab()),
@@ -148,20 +148,6 @@ impl CreateProjectState {
         Effect::None
     }
 
-    fn handle_pending_preset(&mut self, key: KeyCode) -> Effect {
-        if self.field != Field::Layout {
-            return Effect::None;
-        }
-        match key {
-            KeyCode::Char('e') => self.add_preset_tab(editor_tab()),
-            KeyCode::Char('i') => self.add_preset_tab(ide_tab()),
-            KeyCode::Char('g') => self.add_preset_tab(command_tab("git", "lazygit")),
-            KeyCode::Char('d') => self.add_preset_tab(command_tab("docker", "lazydocker")),
-            KeyCode::Char('k') => self.add_preset_tab(command_tab("k9s", "k9s")),
-            KeyCode::Char('m') => self.add_preset_tab(monitor_tab()),
-            _ => Effect::None,
-        }
-    }
 
     fn handle_layout_edit_key(&mut self, key: KeyCode) -> Effect {
         match key {

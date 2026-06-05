@@ -93,7 +93,7 @@ impl NewPaneChoice {
 
     fn label(self) -> &'static str {
         match self {
-            Self::EmptyPane => "Empty pane",
+            Self::EmptyPane => "Empty window",
             Self::EditorTab => "Editor tab",
             Self::IdeTab => "IDE tab",
             Self::GitTab => "Git tab",
@@ -105,7 +105,7 @@ impl NewPaneChoice {
 
     fn description(self) -> &'static str {
         match self {
-            Self::EmptyPane => "Add an empty pane to the current row",
+            Self::EmptyPane => "New empty window/tab with one shell pane",
             Self::EditorTab => "New tab running ${EDITOR:-nvim} .",
             Self::IdeTab => "New tab: editor left, AI top-right, terminal bottom-right",
             Self::GitTab => "New tab running lazygit",
