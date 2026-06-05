@@ -3,6 +3,7 @@ pub fn render(
     area: Rect,
     state: &CreateProjectState,
     theme: &UiTheme,
+    cursor_enabled: bool,
 ) {
     frame.render_widget(Clear, area);
     let columns = Layout::default()
@@ -18,10 +19,79 @@ pub fn render(
         .block(block)
         .wrap(Wrap { trim: false });
     frame.render_widget(paragraph, columns[0]);
-    render_layout_preview(frame, columns[1], state, theme);
+    if cursor_enabled {
+        render_text_field_cursor(frame, columns[0], state);
+    }
+    render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
     if let Some(picker) = state.new_pane_picker {
         render_new_pane_picker(frame, area, picker, theme);
     }
+}
+
+fn render_text_field_cursor(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    state: &CreateProjectState,
+) {
+    if state.confirm != ConfirmState::Editing
+        || state.new_pane_picker.is_some()
+        || state.layout_mode == LayoutEditMode::EditCommand
+    {
+        return;
+    }
+
+    let Some((row, value)) = text_field_cursor_row_and_value(state) else {
+        return;
+    };
+    let inner = inner_rect(area);
+    if inner.width == 0 || inner.height <= row {
+        return;
+    }
+
+    let value_start = 14;
+    let value_width = inner.width.saturating_sub(value_start).max(1);
+    let value_len = value.chars().count() as u16;
+    let cursor_offset = value_start + value_len.min(value_width.saturating_sub(1));
+    frame.set_cursor_position(Position {
+        x: inner.x + cursor_offset,
+        y: inner.y + row,
+    });
+}
+
+fn text_field_cursor_row_and_value(state: &CreateProjectState) -> Option<(u16, &str)> {
+    match state.field {
+        Field::Name => Some((2, state.name.as_str())),
+        Field::Path => Some((3, state.path.as_str())),
+        Field::BaseBranch => Some((4, state.base_branch.as_str())),
+        Field::Layout => None,
+    }
+}
+
+fn render_command_cursor(
+    frame: &mut ratatui::Frame<'_>,
+    area: Rect,
+    state: &CreateProjectState,
+    selected: bool,
+    command: &str,
+) {
+    if !selected
+        || state.field != Field::Layout
+        || state.layout_mode != LayoutEditMode::EditCommand
+        || state.confirm != ConfirmState::Editing
+        || state.new_pane_picker.is_some()
+    {
+        return;
+    }
+    let inner = inner_rect(area);
+    if inner.width == 0 || inner.height < 2 {
+        return;
+    }
+    let command_len = command.chars().count() as u16;
+    let cursor_offset = command_len.min(inner.width.saturating_sub(1));
+    frame.set_cursor_position(Position {
+        x: inner.x + cursor_offset,
+        y: inner.y + 1,
+    });
 }
 
 fn render_new_pane_picker(
@@ -89,6 +159,7 @@ fn render_layout_preview(
     area: Rect,
     state: &CreateProjectState,
     theme: &UiTheme,
+    cursor_enabled: bool,
 ) {
     let mode = match state.layout_mode {
         LayoutEditMode::Navigate => "nav",
@@ -179,6 +250,9 @@ fn render_layout_preview(
                 .block(pane_block)
                 .wrap(Wrap { trim: false });
             frame.render_widget(paragraph, pane_chunks[pane_index]);
+            if cursor_enabled {
+                render_command_cursor(frame, pane_chunks[pane_index], state, selected, &pane.command);
+            }
         }
     }
 
