@@ -104,7 +104,6 @@ pub struct CreateProjectState {
     selected_pane: usize,
     pending_n: bool,
     pending_delete: bool,
-    pending_preset: bool,
     new_pane_picker: Option<NewPanePickerState>,
     layout_mode: LayoutEditMode,
     confirm: ConfirmState,

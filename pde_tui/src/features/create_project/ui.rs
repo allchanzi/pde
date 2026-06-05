@@ -33,10 +33,10 @@ fn render_new_pane_picker(
     let popup = centered_rect(68, 58, area);
     frame.render_widget(Clear, popup);
     let mut lines = vec![
-        Line::from(Span::styled("New pane / preset", theme.help_title())),
+        Line::from(Span::styled("New window / preset", theme.help_title())),
         Line::from(""),
-        Line::from("Choose what to add. Enter confirms, Esc closes, j/k moves."),
-        Line::from("Direct keys: Space empty, e editor, i ide, g git, d docker, K k9s, m monitor."),
+        Line::from("Choose a window/tab to add. Enter confirms, Esc closes, j/k moves."),
+        Line::from("Direct keys: Space empty window, e editor, i ide, g git, d docker, K k9s, m monitor."),
         Line::from(""),
     ];
     for (index, choice) in NEW_PANE_CHOICES.iter().copied().enumerate() {

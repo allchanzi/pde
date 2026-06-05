@@ -24,7 +24,7 @@ impl CreateProjectState {
             Line::from(""),
             Line::from("Enter/Tab next • Shift+Tab prev • ? help • Esc cancel"),
             Line::from(
-                "Layout nav: [/] tab • hjkl select • i edit • n add • d delete",
+                "Layout nav: [/] tab • hjkl select • n p/r/w add • d delete",
             ),
         ]);
         if self.field == Field::Layout {
@@ -58,9 +58,9 @@ impl CreateProjectState {
             Line::from("?                 Toggle help"),
             Line::from(""),
             Line::from(Span::styled("Layout editor", theme.title())),
-            Line::from("n w               New window/tab"),
+            Line::from("n w / p           Open popup: empty/predefined window/tab"),
             Line::from("n r               New row inside current window"),
-            Line::from("n p / p           Open popup: empty pane or predefined tab"),
+            Line::from("n p               New empty pane in current row"),
             Line::from("d w               Delete selected window/tab"),
             Line::from("d r               Delete selected row"),
             Line::from("d p               Delete selected pane"),
