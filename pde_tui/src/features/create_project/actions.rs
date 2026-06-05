@@ -67,6 +67,18 @@ impl CreateProjectState {
         }
     }
 
+    fn handle_pending_delete(&mut self, key: KeyCode) -> Effect {
+        if self.field != Field::Layout {
+            return Effect::None;
+        }
+        match key {
+            KeyCode::Char('w') => self.delete_window(),
+            KeyCode::Char('r') => self.delete_row(),
+            KeyCode::Char('p') => self.delete_pane(),
+            _ => Effect::None,
+        }
+    }
+
     fn handle_new_pane_picker_key(&mut self, key: KeyCode) -> Effect {
         match key {
             KeyCode::Esc => {
@@ -247,6 +259,46 @@ impl CreateProjectState {
             command: String::new(),
         });
         self.selected_pane = self.current_row().panes.len() - 1;
+    }
+
+    fn delete_window(&mut self) -> Effect {
+        if self.layout.len() <= 1 {
+            return Effect::Message("Cannot delete the last window/tab".into());
+        }
+        let removed = self.layout.remove(self.selected_tab).name;
+        self.selected_tab = self.selected_tab.saturating_sub(1).min(self.layout.len() - 1);
+        self.selected_row = 0;
+        self.selected_pane = 0;
+        Effect::Message(format!("Deleted window/tab: {removed}"))
+    }
+
+    fn delete_row(&mut self) -> Effect {
+        if self.current_tab().rows.len() <= 1 {
+            return Effect::Message("Cannot delete the last row in a window/tab".into());
+        }
+        let row = self.selected_row;
+        self.current_tab_mut().preset = None;
+        self.current_tab_mut().rows.remove(row);
+        self.selected_row = self
+            .selected_row
+            .saturating_sub(1)
+            .min(self.current_tab().rows.len() - 1);
+        self.selected_pane = 0;
+        Effect::Message(format!("Deleted row {}", row + 1))
+    }
+
+    fn delete_pane(&mut self) -> Effect {
+        if self.current_row().panes.len() <= 1 {
+            return Effect::Message("Cannot delete the last pane in a row".into());
+        }
+        let pane = self.selected_pane;
+        self.current_tab_mut().preset = None;
+        self.current_row_mut().panes.remove(pane);
+        self.selected_pane = self
+            .selected_pane
+            .saturating_sub(1)
+            .min(self.current_row().panes.len() - 1);
+        Effect::Message(format!("Deleted pane {}", pane + 1))
     }
 
     fn add_preset_tab(&mut self, tab: LayoutTab) -> Effect {
