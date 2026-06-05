@@ -13,6 +13,7 @@ use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
@@ -97,7 +98,7 @@ fn next_effect(app: &mut App) -> Result<Option<Effect>> {
 fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     let [main, footer] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(3)])
+        .constraints([Constraint::Min(3), Constraint::Length(4)])
         .areas(frame.area());
 
     workspace::render(frame, main, &mut app.workspace, &app.theme);
@@ -108,11 +109,11 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     }
 
     frame.render_widget(
-        Paragraph::new(app.message.as_str())
+        Paragraph::new(footer_lines(app))
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .title(format!("Shortcuts • theme: {}", app.theme.name)),
+                    .title(format!("Status / shortcuts • theme: {}", app.theme.name)),
             )
             .wrap(Wrap { trim: true }),
         footer,
@@ -121,6 +122,23 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     if app.show_help {
         render_help_popup(frame, app);
     }
+}
+
+fn footer_lines(app: &App) -> Vec<Line<'static>> {
+    let shortcuts = match &app.mode {
+        Mode::Workspace => workspace::WorkspaceState::help().to_string(),
+        Mode::CreateProject(state) => state.footer_help().to_string(),
+    };
+
+    let message = app.message.trim();
+    if message.is_empty() || message == shortcuts {
+        return vec![Line::from(shortcuts)];
+    }
+
+    vec![
+        Line::from(message.to_string()),
+        Line::from(Span::styled(shortcuts, app.theme.muted())),
+    ]
 }
 
 fn render_help_popup(frame: &mut ratatui::Frame<'_>, app: &App) {

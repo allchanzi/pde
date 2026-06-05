@@ -20,22 +20,6 @@ impl CreateProjectState {
             Line::from(""),
         ];
         lines.extend(self.layout_lines(theme));
-        lines.extend([
-            Line::from(""),
-            Line::from("Enter/Tab next • Shift+Tab prev • ? help • Esc cancel"),
-            Line::from(
-                "Layout nav: [/] tab • hjkl select • n p/r/w add • d delete",
-            ),
-        ]);
-        if self.field == Field::Layout {
-            let mode = match self.layout_mode {
-                LayoutEditMode::Navigate => "NAVIGATION — hjkl moves, i edits selected command",
-                LayoutEditMode::EditCommand => {
-                    "EDIT COMMAND — type freely, Esc returns to navigation"
-                }
-            };
-            lines.push(Line::from(Span::styled(mode, theme.help_title())));
-        }
         if self.confirm == ConfirmState::ConfirmCreate {
             lines.extend([
                 Line::from(""),
@@ -46,6 +30,19 @@ impl CreateProjectState {
             ]);
         }
         lines
+    }
+
+    pub fn footer_help(&self) -> &'static str {
+        if self.confirm == ConfirmState::ConfirmCreate {
+            return "Create confirm • Enter create • Esc back • ? help";
+        }
+        if self.field == Field::Layout {
+            return match self.layout_mode {
+                LayoutEditMode::Navigate => "Create layout • n p pane • n r row • n w/p window popup • d p/r/w delete • i edit • ? help",
+                LayoutEditMode::EditCommand => "Create layout command edit • type command • Enter/Esc finish edit • ? help",
+            };
+        }
+        "Create project • Enter/Tab next • Shift+Tab previous • ? help • Esc cancel"
     }
 
     pub fn active_help_lines(&self, theme: &UiTheme) -> Vec<Line<'static>> {
