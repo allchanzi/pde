@@ -1,10 +1,14 @@
 impl CreateProjectState {
     pub fn new() -> Self {
+        let capabilities_enabled = default_capabilities_enabled();
         Self {
             field: Field::Name,
             name: String::new(),
             path: default_path("project"),
             base_branch: "main".into(),
+            enable_rtui: capabilities_enabled,
+            enable_pantsui: capabilities_enabled,
+            selected_capability: CapabilityChoice::Rtui,
             layout: vec![LayoutTab {
                 name: "terminal".into(),
                 rows: vec![LayoutRow {
@@ -59,6 +63,26 @@ impl CreateProjectState {
                 self.backspace();
                 Effect::None
             }
+            KeyCode::Char('h') | KeyCode::Left if self.field == Field::Capabilities => {
+                self.selected_capability = CapabilityChoice::Rtui;
+                Effect::None
+            }
+            KeyCode::Char('l') | KeyCode::Right if self.field == Field::Capabilities => {
+                self.selected_capability = CapabilityChoice::Pantsui;
+                Effect::None
+            }
+            KeyCode::Char('r') if self.field == Field::Capabilities => {
+                self.toggle_capability(CapabilityChoice::Rtui);
+                Effect::None
+            }
+            KeyCode::Char('p') if self.field == Field::Capabilities => {
+                self.toggle_capability(CapabilityChoice::Pantsui);
+                Effect::None
+            }
+            KeyCode::Char(' ') if self.field == Field::Capabilities => {
+                self.toggle_selected_capability();
+                Effect::None
+            }
             KeyCode::Char('h') | KeyCode::Left if self.field == Field::Layout => {
                 self.move_pane_left();
                 Effect::None
@@ -105,10 +129,10 @@ impl CreateProjectState {
                     "Layout command edit mode: type command, Esc returns to navigation".into(),
                 )
             }
-            KeyCode::Char('p') if self.field == Field::Layout => self.open_new_pane_picker(),
+            KeyCode::Char('o') if self.field == Field::Layout => self.open_new_pane_picker(),
             KeyCode::Char('n') if self.field == Field::Layout => {
                 self.pending_n = true;
-                Effect::Message("Layout: n p=new pane, n r=new row, n w=window preset popup".into())
+                Effect::Message("Layout: n p=new pane, n r=new row; o=on-demand presets".into())
             }
             KeyCode::Char('d') if self.field == Field::Layout => {
                 self.pending_delete = true;

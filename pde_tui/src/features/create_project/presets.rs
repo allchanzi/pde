@@ -86,6 +86,8 @@ impl NewPaneChoice {
             Self::IdeTab => "i",
             Self::GitTab => "g",
             Self::DockerTab => "d",
+            Self::RtuiTab => "r",
+            Self::PantsuiTab => "p",
             Self::K9sTab => "K",
             Self::MonitorTab => "m",
         }
@@ -98,6 +100,8 @@ impl NewPaneChoice {
             Self::IdeTab => "IDE tab",
             Self::GitTab => "Git tab",
             Self::DockerTab => "Docker tab",
+            Self::RtuiTab => "RTUI tab",
+            Self::PantsuiTab => "PantsUI tab",
             Self::K9sTab => "K9s tab",
             Self::MonitorTab => "Monitor tab",
         }
@@ -110,6 +114,8 @@ impl NewPaneChoice {
             Self::IdeTab => "New tab: editor left, AI top-right, terminal bottom-right",
             Self::GitTab => "New tab running lazygit",
             Self::DockerTab => "New tab running lazydocker",
+            Self::RtuiTab => "New tab running rtui .",
+            Self::PantsuiTab => "New tab running pantsui",
             Self::K9sTab => "New tab running k9s",
             Self::MonitorTab => "New tab with network monitor and htop/top",
         }

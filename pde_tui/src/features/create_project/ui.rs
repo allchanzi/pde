@@ -63,6 +63,7 @@ fn text_field_cursor_row_and_value(state: &CreateProjectState) -> Option<(u16, &
         Field::Name => Some((2, state.name.as_str())),
         Field::Path => Some((3, state.path.as_str())),
         Field::BaseBranch => Some((4, state.base_branch.as_str())),
+        Field::Capabilities => None,
         Field::Layout => None,
     }
 }
@@ -106,7 +107,7 @@ fn render_new_pane_picker(
         Line::from(Span::styled("New window / preset", theme.help_title())),
         Line::from(""),
         Line::from("Choose a window/tab to add. Enter confirms, Esc closes, j/k moves."),
-        Line::from("Direct keys: Space empty window, e editor, i ide, g git, d docker, K k9s, m monitor."),
+        Line::from("Direct keys: Space empty window, e editor, i ide, g git, d docker, r rtui, p pantsui, K k9s, m monitor."),
         Line::from(""),
     ];
     for (index, choice) in NEW_PANE_CHOICES.iter().copied().enumerate() {

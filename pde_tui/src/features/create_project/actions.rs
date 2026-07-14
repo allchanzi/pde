@@ -14,7 +14,8 @@ impl CreateProjectState {
         self.field = match self.field {
             Field::Name => Field::Path,
             Field::Path => Field::BaseBranch,
-            Field::BaseBranch => Field::Layout,
+            Field::BaseBranch => Field::Capabilities,
+            Field::Capabilities => Field::Layout,
             Field::Layout => return self.request_confirmation(),
         };
         Effect::None
@@ -25,7 +26,8 @@ impl CreateProjectState {
             Field::Name => Field::Name,
             Field::Path => Field::Name,
             Field::BaseBranch => Field::Path,
-            Field::Layout => Field::BaseBranch,
+            Field::Capabilities => Field::BaseBranch,
+            Field::Layout => Field::Capabilities,
         };
     }
 
@@ -45,8 +47,32 @@ impl CreateProjectState {
             name: self.name.trim().into(),
             path: self.path.trim().into(),
             base_branch: self.base_branch.trim().into(),
+            capabilities: self.capabilities(),
             layout: self.layout.clone(),
         })
+    }
+
+    fn capabilities(&self) -> Vec<String> {
+        let mut capabilities = Vec::new();
+        if self.enable_rtui {
+            capabilities.push("rtui".into());
+        }
+        if self.enable_pantsui {
+            capabilities.push("pantsui".into());
+        }
+        capabilities
+    }
+
+    fn toggle_selected_capability(&mut self) {
+        match self.selected_capability {
+            CapabilityChoice::Rtui => self.enable_rtui = !self.enable_rtui,
+            CapabilityChoice::Pantsui => self.enable_pantsui = !self.enable_pantsui,
+        }
+    }
+
+    fn toggle_capability(&mut self, capability: CapabilityChoice) {
+        self.selected_capability = capability;
+        self.toggle_selected_capability();
     }
 
     fn handle_pending_n(&mut self, key: KeyCode) -> Effect {
@@ -54,7 +80,6 @@ impl CreateProjectState {
             return Effect::None;
         }
         match key {
-            KeyCode::Char('w') => self.open_new_pane_picker(),
             KeyCode::Char('r') => {
                 self.add_row();
                 Effect::Message("Added row".into())
@@ -98,11 +123,11 @@ impl CreateProjectState {
             KeyCode::Char('i') => self.apply_new_pane_choice(NewPaneChoice::IdeTab),
             KeyCode::Char('g') => self.apply_new_pane_choice(NewPaneChoice::GitTab),
             KeyCode::Char('d') => self.apply_new_pane_choice(NewPaneChoice::DockerTab),
+            KeyCode::Char('r') => self.apply_new_pane_choice(NewPaneChoice::RtuiTab),
+            KeyCode::Char('p') => self.apply_new_pane_choice(NewPaneChoice::PantsuiTab),
             KeyCode::Char('K') => self.apply_new_pane_choice(NewPaneChoice::K9sTab),
             KeyCode::Char('m') => self.apply_new_pane_choice(NewPaneChoice::MonitorTab),
-            KeyCode::Char(' ') | KeyCode::Char('p') => {
-                self.apply_new_pane_choice(NewPaneChoice::EmptyPane)
-            }
+            KeyCode::Char(' ') => self.apply_new_pane_choice(NewPaneChoice::EmptyPane),
             _ => Effect::None,
         }
     }
@@ -138,6 +163,8 @@ impl CreateProjectState {
             NewPaneChoice::IdeTab => self.add_preset_tab(ide_tab()),
             NewPaneChoice::GitTab => self.add_preset_tab(command_tab("git", "lazygit")),
             NewPaneChoice::DockerTab => self.add_preset_tab(command_tab("docker", "lazydocker")),
+            NewPaneChoice::RtuiTab => self.add_preset_tab(command_tab("rtui", "rtui .")),
+            NewPaneChoice::PantsuiTab => self.add_preset_tab(command_tab("pantsui", "pantsui")),
             NewPaneChoice::K9sTab => self.add_preset_tab(command_tab("k9s", "k9s")),
             NewPaneChoice::MonitorTab => self.add_preset_tab(monitor_tab()),
         }
@@ -176,6 +203,7 @@ impl CreateProjectState {
             Field::Name => self.name.push(character),
             Field::Path => self.path.push(character),
             Field::BaseBranch => self.base_branch.push(character),
+            Field::Capabilities => {}
             Field::Layout => self.current_pane_mut().command.push(character),
         }
         self.update_default_path();
@@ -192,6 +220,7 @@ impl CreateProjectState {
             Field::BaseBranch => {
                 self.base_branch.pop();
             }
+            Field::Capabilities => {}
             Field::Layout => {}
         }
         self.update_default_path();
