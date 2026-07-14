@@ -1,0 +1,12 @@
+.git
+.claude
+.codex
+.agents
+.cache
+.tmp-nvim-data
+.tmp-nvim-state
+target
+nvim.log
+**/.DS_Store
+**/__pycache__
+**/*.pyc

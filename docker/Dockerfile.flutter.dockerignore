@@ -1,0 +1,8 @@
+.git
+.cache
+.tmp-nvim-state
+target
+nvim.log
+**/.DS_Store
+**/__pycache__
+**/*.pyc

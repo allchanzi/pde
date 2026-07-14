@@ -28,9 +28,9 @@ fi
 
 if [[ ! -f "$PREFS_FILE" ]]; then
   if [[ "$has_zellij" -eq 1 ]]; then
-    printf "PDE_MULTIPLEXER='zellij'\n" > "$PREFS_FILE"
+    printf "MULTIPLEXER='zellij'\n" > "$PREFS_FILE"
   else
-    printf "PDE_MULTIPLEXER='tmux'\n" > "$PREFS_FILE"
+    printf "MULTIPLEXER='tmux'\n" > "$PREFS_FILE"
   fi
 fi
 
