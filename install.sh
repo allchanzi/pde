@@ -90,7 +90,7 @@ if [[ ! -x "$PRESET_INSTALL" ]]; then
   exit 1
 fi
 
-"$PRESET_INSTALL" "${PRESET_ARGS[@]}"
+"$PRESET_INSTALL" ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
 
 echo ""
 echo "✅ PDE installed with preset: $PRESET"

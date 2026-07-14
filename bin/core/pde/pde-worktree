@@ -26,7 +26,6 @@ class Project:
     slug: str
     name: str
     path: str
-    type: str
     base_branch: str | None
 
     @property
@@ -139,14 +138,11 @@ def load_projects() -> list[Project]:
         fail(f"Invalid registry format in {PROJECTS_FILE}.")
     loaded: list[Project] = []
     for item in projects:
-        if str(item.get("type", "")).strip() != "code":
-            continue
         loaded.append(
             Project(
                 slug=str(item.get("slug", "")).strip(),
                 name=str(item.get("name", "")).strip(),
                 path=str(item.get("path", "")).strip(),
-                type="code",
                 base_branch=str(item.get("base_branch", "")).strip() or None,
             )
         )
@@ -429,8 +425,8 @@ def format_branch_line(candidate: BranchCandidate) -> str:
     return f"{candidate.branch}  [{candidate.status_text()}]"
 
 
-def choose_branch(project: Project) -> str:
-    """Choose branch from all local+remote branches."""
+def choose_branch(project: Project, *, purpose: str = "branches") -> str:
+    """Choose a local or remote branch."""
 
     candidates = branch_candidates(project)
     if not candidates:
@@ -443,7 +439,7 @@ def choose_branch(project: Project) -> str:
             [
                 "fzf",
                 "--prompt",
-                f"  {project.slug} branches: ",
+                f"  {project.slug} {purpose}: ",
                 "--pointer",
                 "▶",
                 "--height",
@@ -462,7 +458,7 @@ def choose_branch(project: Project) -> str:
             [
                 "gum",
                 "choose",
-                f"--header={project.name} branches",
+                f"--header={project.name} {purpose}",
                 "--cursor=> ",
                 "--height=18",
             ],
@@ -488,11 +484,11 @@ def switch_or_create_branch(arguments: argparse.Namespace) -> None:
 
 
 def prompt_new_branch(project: Project) -> tuple[str, str]:
-    """Prompt for new branch name using default base branch."""
+    """Prompt for source and new branch name."""
 
-    base_branch = default_base_branch(project)
+    base_branch = choose_branch(project, purpose="source branch")
     print(f"Project: {project.name} ({project.slug})")
-    print(f"Base branch: {base_branch}")
+    print(f"Source branch: {base_branch}")
     print("")
     branch = input("New branch name: ").strip()
     if not branch:

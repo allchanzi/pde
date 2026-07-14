@@ -12,11 +12,43 @@ while [[ -L "$SCRIPT_PATH" ]]; do
   fi
 done
 REPO_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+PACKAGE_VERSION="$(
+  awk -F '\"' '
+    $1 ~ /^version[[:space:]]*=[[:space:]]*$/ { print $2; exit }
+  ' "$REPO_DIR/Cargo.toml" 2>/dev/null || true
+)"
+
+if [[ -n "${PDE_VERSION:-}" ]]; then
+  printf '%s\n' "$PDE_VERSION"
+  exit 0
+fi
 
 if git -C "$REPO_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null && exit 0
+  if describe="$(git -C "$REPO_DIR" describe --tags --always --dirty 2>/dev/null)"; then
+    if [[ "$describe" == v* ]]; then
+      printf '%s\n' "$describe"
+      exit 0
+    fi
+  fi
+  if [[ -n "$PACKAGE_VERSION" ]]; then
+    short_sha="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+    dirty=""
+    if ! git -C "$REPO_DIR" diff --quiet 2>/dev/null; then
+      dirty="-dirty"
+    fi
+    if [[ -n "$short_sha" ]]; then
+      printf 'v%s+%s%s\n' "$PACKAGE_VERSION" "$short_sha" "$dirty"
+      exit 0
+    fi
+    printf 'v%s\n' "$PACKAGE_VERSION"
+    exit 0
+  fi
   git -C "$REPO_DIR" rev-parse --short HEAD
   exit 0
 fi
 
-printf 'unknown\n'
+if [[ -n "$PACKAGE_VERSION" ]]; then
+  printf 'v%s\n' "$PACKAGE_VERSION"
+else
+  printf 'unknown\n'
+fi

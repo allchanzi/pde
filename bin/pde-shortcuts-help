@@ -48,10 +48,12 @@ Most used
   Alt-1..7         Jump to window by number
   Alt-[ / Alt-]    Previous / next window
   Alt-Left/Right   Previous / next window
+  Ctrl-left-click  Open the file path under the cursor in the session's nvim
 
 Global
 ------
   Ctrl-a           Prefix
+  Ctrl-left-click  Open the file path under the cursor in the session's nvim
   Ctrl-a Ctrl-a    Send literal Ctrl-a to the running app
   Alt-h/j/k/l      Focus pane left/down/up/right
   Alt-a/s/w/d      Focus pane left/down/up/right
@@ -150,6 +152,7 @@ Tmux mode (Ctrl-a ...)
   n                Create new branch worktree from default base
   z                Toggle fullscreen
   f                Toggle pane frames
+  O                Open copied file path in the session's nvim
   ,                Rename tab
   .                Rename pane
   ?                Open floating session manager
@@ -223,15 +226,59 @@ Notes
 EOF
 }
 
+print_kitty() {
+  cat <<'EOF'
+PDE KITTY SHORTCUTS
+===================
+
+Native kitty windows (splits). Cross-platform via kitty_mod (Ctrl+Shift).
+These live alongside tmux/zellij: kitty grabs Ctrl+Shift/Ctrl+Alt first, so
+they never clash with the tmux Ctrl-a prefix or the plain Alt-h/j/k/l panes.
+
+Splits
+------
+  Ctrl-Shift--         Split down  (horizontal divider, stacked)
+  Ctrl-Shift-\         Split right (vertical divider, side by side)
+
+Focus
+-----
+  Ctrl-Shift-h/j/k/l   Focus window left/down/up/right
+
+Move / swap
+-----------
+  Ctrl-Alt-h/j/k/l     Move window left/down/up/right
+
+Resize
+------
+  Ctrl-Shift-Alt-h/l   Narrower / wider
+  Ctrl-Shift-Alt-k/j   Taller / shorter
+  Ctrl-Shift-Alt-0     Reset all window sizes
+
+Layout
+------
+  Ctrl-Shift-z         Zoom / un-zoom the focused window
+  Ctrl-Shift-q         Close the focused window
+
+Notes
+-----
+  - Three navigation layers, one modifier each — nvim: Ctrl-h/j/k/l,
+    tmux: Alt-h/j/k/l, kitty: Ctrl-Shift-h/j/k/l.
+  - New splits open in the current window's working directory.
+EOF
+}
+
 case "$target" in
   tmux) print_tmux ;;
   zellij) print_zellij ;;
+  kitty) print_kitty ;;
   all)
     print_common
     echo
     print_tmux
     echo
     print_zellij
+    echo
+    print_kitty
     ;;
   *)
     echo "Unknown target: $target" >&2

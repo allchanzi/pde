@@ -108,15 +108,28 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         create_project::render(frame, area, state, &app.theme, !app.show_help);
     }
 
+    let footer_block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!("Status / shortcuts • theme: {}", app.theme.name));
+    let footer_inner = footer_block.inner(footer);
+    frame.render_widget(footer_block, footer);
+
+    let [footer_content, footer_version] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .areas(footer_inner);
+
     frame.render_widget(
-        Paragraph::new(footer_lines(app))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!("Status / shortcuts • theme: {}", app.theme.name)),
-            )
-            .wrap(Wrap { trim: true }),
-        footer,
+        Paragraph::new(footer_lines(app)).wrap(Wrap { trim: true }),
+        footer_content,
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            tui_version_label(),
+            app.theme.muted(),
+        )))
+        .alignment(ratatui::layout::Alignment::Right),
+        footer_version,
     );
 
     if app.show_help {
@@ -139,6 +152,10 @@ fn footer_lines(app: &App) -> Vec<Line<'static>> {
         Line::from(message.to_string()),
         Line::from(Span::styled(shortcuts, app.theme.muted())),
     ]
+}
+
+fn tui_version_label() -> String {
+    format!("v{}", env!("CARGO_PKG_VERSION"))
 }
 
 fn render_help_popup(frame: &mut ratatui::Frame<'_>, app: &App) {

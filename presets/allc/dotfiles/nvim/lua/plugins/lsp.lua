@@ -7,10 +7,16 @@ return {
   {
     "williamboman/mason-lspconfig.nvim",
     dependencies = { "williamboman/mason.nvim" },
-    opts = {
-      ensure_installed = { "basedpyright", "rust_analyzer", "marksman", "texlab" },
-      automatic_installation = true,
-    },
+    opts = function()
+      local automatic_installation = vim.env.PDE_MASON_AUTO_INSTALL ~= "0"
+
+      return {
+        ensure_installed = automatic_installation
+            and { "basedpyright" }
+          or {},
+        automatic_installation = automatic_installation,
+      }
+    end,
   },
 
   {
@@ -19,6 +25,7 @@ return {
 
   {
     "L3MON4D3/LuaSnip",
+    build = "make install_jsregexp",
     dependencies = {
       "saadparwaiz1/cmp_luasnip",
     },
@@ -141,32 +148,13 @@ return {
 
       vim.lsp.enable("basedpyright")
 
-      vim.lsp.config("rust_analyzer", {
-        capabilities = capabilities,
-        settings = {
-          ["rust-analyzer"] = {
-            checkOnSave = true,
-            check = { command = "clippy" },
-            diagnostics = { enable = true },
-          },
-        },
-      })
-      vim.lsp.enable("rust_analyzer")
+      if vim.fn.executable("dart") == 1 then
+        vim.lsp.config("dartls", {
+          capabilities = capabilities,
+        })
+        vim.lsp.enable("dartls")
+      end
 
-      vim.lsp.config("dartls", {
-        capabilities = capabilities,
-      })
-      vim.lsp.enable("dartls")
-
-      vim.lsp.config("marksman", {
-        capabilities = capabilities,
-      })
-      vim.lsp.enable("marksman")
-
-      vim.lsp.config("texlab", {
-        capabilities = capabilities,
-      })
-      vim.lsp.enable("texlab")
     end,
   },
 

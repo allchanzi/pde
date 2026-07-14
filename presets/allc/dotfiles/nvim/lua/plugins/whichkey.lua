@@ -15,21 +15,24 @@ return {
         { "<leader>ca", desc = "Code action" },
         { "<leader>cf", desc = "Format file" },
         { "<leader>cr", desc = "Rename symbol" },
+        { "<leader>cd", desc = "Line diagnostics" },
+        { "<leader>cl", desc = "Reset LSP" },
         { "<leader>rn", desc = "Rename symbol" },
 
         { "<leader>f", group = "Find" },
         { "<leader>ff", desc = "Find files" },
+        { "<leader>fF", desc = "Find files from clipboard" },
         { "<leader>fg", desc = "Live grep" },
         { "<leader>fp", desc = "Live grep with path filter" },
         { "<leader>fb", desc = "Buffers" },
         { "<leader>fB", desc = "Current tab buffers" },
         { "<leader>fr", desc = "Recent files" },
         { "<leader>fR", desc = "Project replace" },
+        { "<leader>fw", desc = "Replace word in buffer" },
         { "<leader>fs", desc = "Grep word under cursor" },
         { "<leader>fc", desc = "Fuzzy find in buffer" },
         { "<leader>fh", desc = "Help tags" },
         { "<leader>fd", desc = "Diagnostics" },
-        { "<leader>r",  desc = "Registers" },
         { "<leader>h",  desc = "Help popup" },
 
         { "<leader>g", group = "Git" },
@@ -58,6 +61,7 @@ return {
 
         { "<leader>x", group = "Diagnostics" },
         { "<leader>xx", desc = "Diagnostics panel" },
+        { "<leader>xv", desc = "Toggle inline diagnostics" },
 
         { "<leader>s", group = "Split / Window" },
         { "<leader>sv", desc = "Vertical split" },

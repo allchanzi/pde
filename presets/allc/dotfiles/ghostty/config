@@ -13,6 +13,12 @@ macos-non-native-fullscreen = false
 # Send mouse events to terminal apps such as nvim, tmux and zellij.
 mouse-reporting = true
 
+# Ctrl-click on Linux / Cmd-click on macOS opens detected URLs.
+link-url = true
+
+# Selecting text copies it immediately, useful for file paths in shell output.
+copy-on-select = true
+
 keybind = cmd+[=previous_tab
 keybind = cmd+]=next_tab
 keybind = cmd+n=new_tab

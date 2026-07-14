@@ -266,6 +266,7 @@ return {
   {
     "folke/tokyonight.nvim",
     name = "tokyonight",
+    enabled = vim.env.PDE_REMOTE ~= "1",
     priority = 1000,
     config = function()
       local theme = require("config.theme")
@@ -323,6 +324,7 @@ return {
   {
     "Mofiqul/dracula.nvim",
     name = "dracula",
+    enabled = vim.env.PDE_REMOTE ~= "1",
     priority = 1000,
     config = function()
       local theme = require("config.theme")
@@ -345,6 +347,7 @@ return {
   {
     "shaunsingh/nord.nvim",
     name = "nord",
+    enabled = vim.env.PDE_REMOTE ~= "1",
     priority = 1000,
     config = function()
       local theme = require("config.theme")
@@ -365,6 +368,7 @@ return {
   {
     "altercation/vim-colors-solarized",
     name = "solarized",
+    enabled = vim.env.PDE_REMOTE ~= "1",
     priority = 1000,
     config = function()
       local theme = require("config.theme")

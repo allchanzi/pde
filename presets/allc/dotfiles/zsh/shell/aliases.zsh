@@ -34,3 +34,7 @@ fi
 
 # Git branches sorted by recent commit date
 alias gbr="git branch --all --sort=-committerdate --format='%(committerdate:short) %(refname:short) %(authorname)'"
+
+# Open a path from terminal output (arg, or clipboard when omitted) in the
+# session's running Neovim; falls back to a fresh nvim outside a session.
+alias vo="nvim-remote-open"

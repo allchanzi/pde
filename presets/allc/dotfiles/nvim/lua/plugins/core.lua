@@ -13,10 +13,6 @@ return {
         "vim",
         "vimdoc",
         "bash",
-        "markdown",
-        "markdown_inline",
-        "latex",
-        "bibtex",
       },
       highlight = {
         enable = true,
@@ -43,6 +39,13 @@ return {
     event = "VeryLazy",
     keys = {
       { "<leader>ff", "<cmd>Telescope find_files<cr>",                desc = "Find files" },
+      {
+        "<leader>fF",
+        function()
+          require("config.openers").find_files_from_clipboard()
+        end,
+        desc = "Find files from clipboard",
+      },
       { "<leader>fg", "<cmd>Telescope live_grep<cr>",                 desc = "Live grep" },
       {
         "<leader>fp",
