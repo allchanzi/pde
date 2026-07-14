@@ -74,7 +74,7 @@ fzf-history-run-widget() {
   local selected
   selected="$(
     fc -rl 1 |
-      sed -E 's/^[[:space:]]*[0-9]+[[:space:]]+//' |
+      sed -E 's/^[[:space:]]*[0-9]+\*?[[:space:]]+//' |
       awk 'NF && !seen[$0]++' |
       fzf --height=40% --reverse --border \
         --prompt='History> ' \

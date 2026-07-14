@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+# nvim-remote-open — open a file path (optionally file:line:col) from terminal
+# output in the Neovim instance already running in this tmux/zellij session.
+#
+# The target comes from the first argument, or (when omitted) from the system
+# clipboard — so it pairs with copy-on-select / copy-mode. If the session's
+# Neovim is listening on its RPC socket (started by nvim/init.lua) the path is
+# delivered there; otherwise a fresh nvim is launched on the path.
+#
+# The socket path here MUST match session_socket() in
+# dotfiles/nvim/lua/config/openers.lua.
+set -euo pipefail
+
+# ── Target: argument or clipboard ─────────────────────────────────────────────
+target="${1:-}"
+if [[ -z "$target" ]]; then
+  if command -v pbpaste >/dev/null 2>&1; then
+    target="$(pbpaste 2>/dev/null || true)"
+  elif command -v wl-paste >/dev/null 2>&1; then
+    target="$(wl-paste --no-newline 2>/dev/null || true)"
+  elif command -v xclip >/dev/null 2>&1; then
+    target="$(xclip -selection clipboard -o 2>/dev/null || true)"
+  fi
+fi
+target="$(printf '%s' "$target" | tr -d '\r\n')"
+if [[ -z "$target" ]]; then
+  echo "nvim-remote-open: no path given and clipboard is empty." >&2
+  exit 1
+fi
+
+# ── Parse file:line:col, resolving relative paths against $PWD ────────────────
+parsed="$(
+  python3 - "$target" "$PWD" <<'PY'
+import os
+import re
+import sys
+
+text = sys.argv[1]
+project_dir = sys.argv[2]
+
+exts = r"py|pyi|lua|ts|tsx|js|jsx|java|rs|go|rb|c|h|cpp|hpp|json|toml|ya?ml|md|graphql|sh|zsh"
+patterns = [
+    re.compile(rf'(?P<path>[A-Za-z0-9_./-]+\.(?:{exts})):(?P<line>\d+):(?P<col>\d+)'),
+    re.compile(rf'(?P<path>[A-Za-z0-9_./-]+\.(?:{exts})):(?P<line>\d+)'),
+    re.compile(rf'(?P<path>[A-Za-z0-9_./-]+\.(?:{exts}))'),
+    re.compile(r'^(?P<path>[A-Za-z0-9_./-]+)$'),  # last resort: whole target is a bare path (dir / extensionless)
+]
+
+for pattern in patterns:
+    match = pattern.search(text)
+    if not match:
+        continue
+    path = match.group("path")
+    line = match.groupdict().get("line") or "1"
+    col = match.groupdict().get("col") or "1"
+    if not os.path.isabs(path):
+        path = os.path.join(project_dir, path)
+    print(f"{os.path.normpath(path)}\t{line}\t{col}")
+    raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+)" || {
+  echo "nvim-remote-open: no file path found in: $target" >&2
+  exit 1
+}
+
+file="$(printf '%s' "$parsed" | cut -f1)"
+line="$(printf '%s' "$parsed" | cut -f2)"
+col="$(printf '%s' "$parsed" | cut -f3)"
+
+# ── Session RPC socket (must match openers.lua) ───────────────────────────────
+sock_dir="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}"
+sock_dir="${sock_dir%/}"
+sock=""
+key=""
+if [[ -n "${ZELLIJ_SESSION_NAME:-}" ]]; then
+  key="zellij-${ZELLIJ_SESSION_NAME}"
+elif [[ -n "${TMUX:-}" ]] && command -v tmux >/dev/null 2>&1; then
+  key="tmux-$(tmux display-message -p '#S' 2>/dev/null || true)"
+fi
+if [[ -n "$key" ]]; then
+  key="$(printf '%s' "$key" | tr -c 'A-Za-z0-9_-' '-')"
+  sock="$sock_dir/pde-nvim-$key.sock"
+fi
+
+# ── Deliver to the running nvim, or fall back to launching one ────────────────
+if [[ -n "$sock" && -S "$sock" ]] && nvim --server "$sock" --remote-expr '1' >/dev/null 2>&1; then
+  file_esc="${file// /\\ }"
+  nvim --server "$sock" --remote-send "<C-\\><C-n>:e ${file_esc}<CR>:${line}<CR>${col}|zz"
+
+  # Best-effort: raise the nvim pane in tmux (zellij has no per-pane focus CLI).
+  if [[ -n "${TMUX:-}" ]]; then
+    pane="$(
+      tmux list-panes -a -F '#{session_name}:#{window_index}.#{pane_index} #{pane_current_command}' \
+        | awk -v s="$(tmux display-message -p '#S' 2>/dev/null)" '$1 ~ ("^" s ":") && $2 == "nvim" { print $1; exit }'
+    )"
+    [[ -n "$pane" ]] && tmux select-pane -t "$pane" 2>/dev/null || true
+  fi
+
+  echo "Opened $file:$line:$col in the session's Neovim"
+else
+  exec nvim "+call cursor(${line}, ${col})" "$file"
+fi

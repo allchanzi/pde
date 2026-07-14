@@ -13,6 +13,8 @@ fi
 #   git clone ... ~/powerlevel10k  →  ~/powerlevel10k/powerlevel10k.zsh-theme
 if [[ -f "${HOMEBREW_PREFIX:-}/share/powerlevel10k/powerlevel10k.zsh-theme" ]]; then
   source "${HOMEBREW_PREFIX}/share/powerlevel10k/powerlevel10k.zsh-theme"
+elif [[ -f "/usr/share/powerlevel10k/powerlevel10k.zsh-theme" ]]; then
+  source "/usr/share/powerlevel10k/powerlevel10k.zsh-theme"
 elif [[ -f "$HOME/powerlevel10k/powerlevel10k.zsh-theme" ]]; then
   source "$HOME/powerlevel10k/powerlevel10k.zsh-theme"
 fi

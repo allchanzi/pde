@@ -1,0 +1,23 @@
+# Atuin — local-only shell history (no account, no cloud).
+# Docs: https://docs.atuin.sh/configuration/config/
+#
+# Sync stays OFF unless you explicitly run `atuin register` / `atuin login`.
+# These two lines make that guarantee explicit and stop any network chatter.
+auto_sync = false
+update_check = false
+
+# --- Search behaviour ---
+search_mode = "fuzzy"        # fuzzy | prefix | fulltext | skim
+filter_mode = "global"       # global | host | session | directory
+# Cycle scope (global → session → directory …) with Ctrl-R inside the window.
+
+# --- The window itself ---
+style = "compact"            # inline window, does not clear the whole screen
+inline_height = 25           # rows the inline window occupies
+show_preview = true          # full command previewed at the bottom
+show_help = true             # keybinding hints in the footer
+keymap_mode = "auto"         # follow the shell keymap (matches zsh vi-mode)
+
+# Enter runs the selected command immediately; Tab loads it onto the prompt
+# to edit first.
+enter_accept = true

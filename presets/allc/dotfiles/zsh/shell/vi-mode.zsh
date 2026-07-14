@@ -17,8 +17,6 @@ bindkey -M viins '^E' end-of-line
 bindkey -M viins '^K' kill-line
 bindkey -M viins '^U' backward-kill-line
 bindkey -M viins '^W' backward-kill-word
-bindkey -M viins '^R' history-incremental-search-backward
-bindkey -M vicmd '/'  history-incremental-search-backward
 
 # `v` in command mode opens the current command line in $EDITOR (nvim).
 autoload -Uz edit-command-line

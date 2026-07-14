@@ -53,7 +53,7 @@ usage() {
   echo "  pde update --check"
   echo "  pde theme"
   echo "  pde process-analyze"
-  echo "  pde shortcuts-help [tmux|zellij]"
+  echo "  pde shortcuts-help [tmux|zellij|kitty]"
   echo "  pde worktree [existing|branches|new]"
 }
 

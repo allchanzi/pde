@@ -9,6 +9,7 @@ vim.filetype.add({
 })
 
 -- Disable unused providers
+vim.g.loaded_node_provider = 0
 vim.g.loaded_perl_provider = 0
 vim.g.loaded_ruby_provider = 0
 vim.g.loaded_python3_provider = 0
@@ -17,25 +18,7 @@ local opt = vim.opt
 local prefs = require("config.prefs")
 local pants_enabled = prefs.enabled("ENABLE_PANTS", true)
 local pants = pants_enabled and require("config.pants") or nil
-local default_diagnostic_config = {
-  virtual_text = false,
-  virtual_lines = false,
-  underline = true,
-  signs = true,
-  severity_sort = true,
-  update_in_insert = false,
-  float = {
-    border = "rounded",
-    source = "if_many",
-  },
-}
-local python_diagnostic_config = vim.tbl_deep_extend("force", default_diagnostic_config, {
-  virtual_text = {
-    spacing = 2,
-    source = "if_many",
-    prefix = "●",
-  },
-})
+local diagnostics = require("config.diagnostics")
 
 -- Show line numbers
 opt.number = true
@@ -176,17 +159,6 @@ if pants then
   })
 end
 
-local function apply_diagnostic_config(bufnr)
-  local filetype = vim.bo[bufnr].filetype
-
-  if filetype == "python" then
-    vim.diagnostic.config(python_diagnostic_config)
-    return
-  end
-
-  vim.diagnostic.config(default_diagnostic_config)
-end
-
 -- Autosave when losing focus or leaving buffer
 vim.api.nvim_create_autocmd({ "FocusLost", "BufLeave" }, {
   callback = function()
@@ -202,12 +174,12 @@ vim.api.nvim_create_autocmd({ "DirChanged", "BufWritePost", "ShellCmdPost" }, {
   callback = refresh_project_caches,
 })
 
-vim.diagnostic.config(default_diagnostic_config)
+diagnostics.apply(vim.api.nvim_get_current_buf())
 
 -- FileType alone is sufficient — filetype doesn't change between BufEnter events
 vim.api.nvim_create_autocmd("FileType", {
   callback = function(args)
-    apply_diagnostic_config(args.buf)
+    diagnostics.apply(args.buf)
   end,
 })
 

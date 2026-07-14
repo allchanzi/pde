@@ -135,6 +135,21 @@ keybinds clear-defaults=true {
             }
             SwitchToMode "Normal"
         }
+        // ── Open a copied file path in the session's Neovim ──
+        // Select the path first (mouse / scroll mode copies to the clipboard),
+        // then C-a O delivers it into the running nvim via its RPC socket.
+        bind "O" {
+            Run "zsh" "-lc" "nvim-remote-open" {
+                floating true
+                x "20%"
+                y "30%"
+                width "60%"
+                height "40%"
+                name "open-in-nvim"
+                close_on_exit true
+            }
+            SwitchToMode "Normal"
+        }
         bind "," { SwitchToMode "RenameTab"; }
         bind "." { SwitchToMode "RenamePane"; }
         bind "?" {

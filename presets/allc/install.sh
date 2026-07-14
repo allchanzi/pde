@@ -238,6 +238,7 @@ backup_if_needed "$HOME/.tmux.conf"
 backup_if_needed "$HOME/.tmux.theme.conf"
 backup_if_needed "$HOME/.zshrc"
 backup_if_needed "$HOME/.config/shell"
+backup_if_needed "$HOME/.config/atuin/config.toml"
 backup_if_needed "$LAZYGIT_CONFIG_DIR"
 backup_if_needed "$K9S_CONFIG_DIR"
 backup_if_needed "$HOME/bin/pde"
@@ -250,6 +251,7 @@ backup_if_needed "$HOME/bin/pde-prefs"
 backup_if_needed "$HOME/bin/install-optionals"
 backup_if_needed "$HOME/bin/pde-update"
 backup_if_needed "$HOME/bin/tmux-open-in-nvim"
+backup_if_needed "$HOME/bin/nvim-remote-open"
 backup_if_needed "$HOME/bin/setup"
 
 ########################################
@@ -269,6 +271,8 @@ ln -sf "$PRESET_DIR/dotfiles/tmux/.tmux.conf" "$HOME/.tmux.conf"
 ln -sf "$PRESET_DIR/dotfiles/tmux/theme.conf" "$HOME/.tmux.theme.conf"
 ln -sf "$PRESET_DIR/dotfiles/zsh/.zshrc" "$HOME/.zshrc"
 ln -sfn "$PRESET_DIR/dotfiles/zsh/shell" "$HOME/.config/shell"
+mkdir -p "$HOME/.config/atuin"
+ln -sf "$PRESET_DIR/dotfiles/atuin/config.toml" "$HOME/.config/atuin/config.toml"
 ensure_runtime_config_dir "$LAZYGIT_CONFIG_DIR"
 ln -sf "$PRESET_DIR/dotfiles/lazygit/config.yml" "$LAZYGIT_CONFIG_DIR/config.yml"
 ln -sf "$PRESET_DIR/dotfiles/lazygit/config.shared.yml" "$LAZYGIT_CONFIG_DIR/config.shared.yml"
@@ -289,6 +293,7 @@ ln -sf "$CONFIG_DIR/bin/pde-update" "$HOME/bin/pde-update"
 ln -sf "$CONFIG_DIR/bin/network-ports" "$HOME/bin/network-ports"
 ln -sf "$CONFIG_DIR/bin/run-and-return-to-shell" "$HOME/bin/run-and-return-to-shell"
 ln -sf "$CONFIG_DIR/bin/tmux-open-in-nvim" "$HOME/bin/tmux-open-in-nvim"
+ln -sf "$CONFIG_DIR/bin/nvim-remote-open" "$HOME/bin/nvim-remote-open"
 ln -sf "$CONFIG_DIR/bin/setup" "$HOME/bin/setup"
 
 ########################################
@@ -327,6 +332,19 @@ if command -v fzf >/dev/null 2>&1; then
   echo "⚡ Setting up fzf shell integration..."
   if [[ -x "$(brew --prefix)/opt/fzf/install" ]]; then
     "$(brew --prefix)/opt/fzf/install" --all --no-bash --no-fish || true
+  fi
+fi
+
+########################################
+# Seed atuin history from existing shell history (first run only)
+########################################
+
+if command -v atuin >/dev/null 2>&1; then
+  # Only import when the atuin DB is still empty, so re-running the installer
+  # does not create duplicate entries.
+  if [[ -z "$(atuin history list 2>/dev/null | head -n 1)" ]]; then
+    echo "🕘 Importing existing shell history into atuin..."
+    atuin import auto >/dev/null 2>&1 || true
   fi
 fi
 

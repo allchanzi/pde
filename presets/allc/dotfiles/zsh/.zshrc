@@ -23,3 +23,13 @@ SHELL_CONFIG_DIR="$HOME/.config/shell"
 export PATH="$HOME/bin:$PATH"
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# Atuin — better Ctrl-R history window (local-only, no account/cloud).
+# Loaded AFTER fzf so it owns Ctrl-R; --disable-up-arrow keeps the native
+# up/down prefix-search bound in env.zsh.
+if command -v atuin >/dev/null 2>&1; then
+  eval "$(atuin init zsh --disable-up-arrow)"
+fi
+
+# Load machine-local overrides (not tracked in the preset; may not exist)
+[[ -f "$SHELL_CONFIG_DIR/local.zsh" ]] && source "$SHELL_CONFIG_DIR/local.zsh"
