@@ -12,6 +12,7 @@ A terminal-first PDE app with a Rust TUI, CLI wrappers, and optional install pre
 - [Directory structure](#directory-structure)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Development containers](#development-containers)
 - [Editing Configs](#editing-configs)
 - [Theme system](#theme-system)
 - [Multiplexer](#multiplexer)
@@ -50,6 +51,7 @@ After that, register projects in the shared registry and open them from the TUI 
 
 ```bash
 projects register my-project ~/projects/my-project
+projects register my-project ~/projects/my-project --rtui --pantsui
 projects
 ```
 
@@ -153,6 +155,261 @@ Runtime/log/state data is intentionally kept outside the repo:
 - k9s runtime state/logs/clusters: official k9s config/runtime dir (`~/Library/Application Support/k9s` on macOS, `~/.config/k9s` on Linux)
 
 Restart your terminal when done if you installed `allc`.
+
+## Development containers
+
+The `docker/` directory contains local development environments and is intentionally
+kept lightweight in Git. Each image includes the PDE terminal setup, Neovim, tmux, Zsh, Git,
+Lazygit, Lazydocker, eza, btop, gum, w3m, Docker CLI, common CLI utilities, and the
+tools required for its selected stack. The `python-pants-dev` image also installs
+`rtui` and `pantsui` from GitHub releases. The complete image additionally includes Mutt.
+
+### What is where
+
+```text
+docker/
+├── Dockerfile.complete              Everything in one image
+├── Dockerfile.rust                  Rust development
+├── Dockerfile.pants-python          Pants and Python development
+├── Dockerfile.python-pants-dev      Remote Python/Pants development
+├── Dockerfile.flutter               Flutter Linux/web development
+├── Dockerfile.remote                Remote/headless PDE runtime
+├── Dockerfile.*.dockerignore        Build-context exclusions per image
+└── pde/
+    ├── install.sh                   Installs PDE links and container config
+    ├── install-common-tools.sh      Installs shared terminal tools
+    ├── entrypoint.sh                Restores config when the container starts
+    └── zshrc                        Container-specific Zsh configuration
+```
+
+| Image | Included stack | Typical use |
+| --- | --- | --- |
+| `complete` | Rust, Pants, Python, Basedpyright, Flutter, Dart, Mutt, Linux/web dependencies, Docker CLI | Work across multiple project types |
+| `rust` | Rustup, Cargo, Rust compiler, rust-analyzer, rustfmt, Clippy | Rust applications, libraries and the PDE TUI |
+| `pants-python` | Python, virtual environments, Pants, Basedpyright, Docker CLI | Python Pants monorepos and Docker-backed tests |
+| `python-pants-dev` | PDE TUI + launcher logic, Python, Pants, Basedpyright, Docker CLI, Neovim, `rtui`, `pantsui` and terminal tooling | Remote Python/Pants development on a headless server or devbox |
+| `flutter` | Flutter SDK, Dart SDK, Linux desktop and web dependencies | Flutter analysis, tests and Linux/web development |
+| `remote` | PDE TUI + launcher logic, Neovim, tmux, Zsh, Git, Lazygit/Lazydocker, Python and common CLI tools | Headless remote server or devbox where you want PDE itself without extra language tooling |
+
+### Paths inside a container
+
+| Path | Contents |
+| --- | --- |
+| `/workspace` | Mounted project and default working directory |
+| `/opt/pde` | Copy of this PDE repository used by the container |
+| `/opt/pde/docker/pde` | Container entrypoint, installer and Zsh config |
+| `/home/allc` | Default user home |
+| `/home/allc/bin` | PDE commands such as `pde`, `projects` and `pde-worktree` |
+| `/home/allc/.config/nvim` | Neovim configuration linked from `/opt/pde/presets/allc` |
+| `/home/allc/.config/pde` | PDE preferences and project registry |
+| `/usr/local/cargo` | Cargo binaries and cache in Rust-enabled images |
+| `/usr/local/rustup` | Rust toolchains in Rust-enabled images |
+| `/opt/flutter` | Flutter SDK in Flutter-enabled images |
+| `/usr/local/bin/pants` | Pants launcher in Pants-enabled images |
+
+The `complete` and `pants-python` images set `ENABLE_PANTS=1` and
+`PANTS_CONCURRENT=true`. All images disable automatic Mason installation because
+their language tooling is installed directly in the image.
+
+### Build
+
+Build the desired variant:
+
+```bash
+docker build -f docker/Dockerfile.complete -t pde:complete .
+docker build -f docker/Dockerfile.rust -t pde:rust .
+docker build -f docker/Dockerfile.pants-python -t pde:pants-python .
+docker build -f docker/Dockerfile.python-pants-dev -t pde:python-pants-dev .
+docker build -f docker/Dockerfile.flutter -t pde:flutter .
+docker build -f docker/Dockerfile.remote -t pde:remote .
+```
+
+The build context must remain the repository root (`.`), even though the Dockerfiles
+are under `docker/`, because the images copy PDE source and configuration files.
+
+To pin custom release tags or repositories for the extra TUI tools in
+`python-pants-dev`, pass build args such as:
+
+```bash
+docker build -f docker/Dockerfile.python-pants-dev \
+  --build-arg RTUI_REPO=allchanzi/rtui \
+  --build-arg RTUI_VERSION=v0.1.1 \
+  --build-arg PANTSUI_REPO=allchanzi/pantsui \
+  --build-arg PANTSUI_VERSION=v0.1.0 \
+  -t pde:python-pants-dev .
+```
+
+To match ownership of files in the mounted project, override the default `allc`
+user's UID/GID:
+
+```bash
+docker build -f docker/Dockerfile.complete \
+  --build-arg USER_ID="$(id -u)" \
+  --build-arg GROUP_ID="$(id -g)" \
+  --build-arg PDE_VERSION=local \
+  -t pde:complete .
+```
+
+### Run
+
+Mount the current project at `/workspace`:
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/workspace" \
+  pde:complete
+```
+
+Use another image by changing its tag:
+
+```bash
+docker run --rm -it -v "$PWD:/workspace" pde:rust
+docker run --rm -it -v "$PWD:/workspace" pde:pants-python
+docker run --rm -it -v "$PWD:/workspace" pde:python-pants-dev
+docker run --rm -it -v "$PWD:/workspace" pde:flutter
+docker run --rm -it -v "$PWD:/workspace" pde:remote
+```
+
+Mount a named volume if shell, editor and tool caches should survive container
+recreation:
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/workspace" \
+  -v pde-home:/home/allc \
+  pde:complete
+```
+
+For Docker-backed Pants tests, mount the host Docker socket:
+
+```bash
+docker run --rm -it \
+  -v "$PWD:/workspace" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  pde:pants-python
+```
+
+### Commands available by variant
+
+```bash
+# Common PDE and terminal commands
+pde
+projects
+nvim .
+tmux
+lazygit
+lazydocker
+eza
+btop
+gum
+w3m https://example.com
+
+# Complete only
+mutt
+
+# Rust and complete
+cargo --version
+rustc --version
+cargo test
+cargo clippy
+
+# Pants/Python and complete
+python3 --version
+pants --version
+pants test ::
+pants check ::
+
+# Flutter and complete
+flutter --version
+dart --version
+flutter doctor
+flutter analyze
+flutter test
+
+# Python/Pants dev only
+pde --version
+pde
+pde create
+python3 --version
+python3 -m venv .venv
+basedpyright --version
+pantsui --version
+rtui --version
+pants --version
+pants test ::
+pants check ::
+
+# Remote only
+pde --version
+pde
+pde create
+python3 --version
+```
+
+Flutter images support Linux desktop and web workflows. Android SDK, Android emulator,
+Xcode and iOS tooling are intentionally omitted. iOS builds require macOS, while
+Android development needs a separately configured Android SDK or another image.
+
+The `python-pants-dev` image sets `PDE_DOCKER_PROFILE=python-pants-dev`, defaults to tmux,
+enables Pants, installs Basedpyright, and starts with `AI_PROFILE=none`.
+
+The `remote` image sets `PDE_DOCKER_PROFILE=remote`, defaults to tmux, keeps Pants off,
+and starts with `AI_PROFILE=none` so it works cleanly on a headless remote machine.
+
+### What gets installed in `python-pants-dev`
+
+The `python-pants-dev` image installs:
+
+- PDE runtime:
+  - `pde-tui`
+  - PDE shell wrappers from `bin/`
+  - PDE config links from `docker/pde/install.sh`
+- Terminal/editor tools:
+  - `zsh`
+  - `tmux`
+  - `nvim` (official stable Neovim release)
+  - `fzf`
+  - `ripgrep`
+  - `fd`
+  - `tree`
+  - `btop`
+  - `w3m`
+- Git/dev shell tools:
+  - `git`
+  - `curl`
+  - `jq`
+  - `unzip`
+  - `tar`
+  - `gzip`
+  - `xz-utils`
+  - `file`
+  - `openssh-client`
+- Docker/CLI helpers:
+  - Docker CLI
+  - `lazygit`
+  - `lazydocker`
+  - `gum`
+  - `eza`
+- Extra TUI tools:
+  - `rtui`
+  - `pantsui`
+- Python/Pants tools:
+  - `python3`
+  - `python3-dev`
+  - `python3-pip`
+  - `python3-venv`
+  - `pants`
+  - `basedpyright`
+
+It also writes default PDE prefs for this profile:
+
+```bash
+MULTIPLEXER='tmux'
+ENABLE_PANTS='1'
+AI_PROFILE='none'
+AI_COMMAND_1=''
+AI_COMMAND_2=''
+```
 
 ### First Run
 
@@ -369,11 +626,27 @@ projects list                              # includes active tmux/zellij session
 projects open my-project
 projects open my-project -b feature/branch
 projects register my-project ~/git/my-project
+projects register my-project ~/git/my-project --rtui --pantsui
 projects delete my-project
 projects info my-project
 ```
 
 Registry entries can include optional capabilities and custom commands. Use `projects run <name> <capability>` when you want a named command attached to a project.
+
+The `rtui` capability adds a dedicated `rtui` window to the session that launches `rtui .` in the project directory. For backward compatibility, the older `requests` capability also opens the same `rtui` window, and a `requests` custom command is still honored as an override. Override the command per project with an `rtui`, `requests`, or `pantsui` entry in the project's custom commands.
+
+Examples:
+
+```bash
+projects register my-project ~/git/my-project --rtui --pantsui
+projects register my-project ~/git/my-project \
+  --capability rtui \
+  --capability pantsui \
+  --command rtui='rtui .' \
+  --command pantsui='pantsui'
+
+pde create my-project ~/git/my-project --rtui --pantsui
+```
 
 If you want a standalone alias in `~/bin`, `projects register` can create a wrapper launcher that delegates back to the registry entry. Existing hand-crafted launchers can still coexist with the registry.
 
@@ -400,8 +673,6 @@ Plugin specs: `nvim/lua/plugins/`
 | gitsigns.nvim | Inline git blame, hunk navigation and staging |
 | conform.nvim | Formatting |
 | nvim-lspconfig | LSP client |
-| render-markdown.nvim | Better Markdown / README rendering inside Neovim |
-| vimtex | LaTeX editing, compile, and PDF viewer integration |
 | catppuccin/nvim | Colour scheme |
 | trouble.nvim | Diagnostics panel |
 | which-key.nvim | Keybinding hints |
@@ -522,6 +793,9 @@ ZSH config is split into focused files under `zsh/shell/`:
 | `functions.zsh` | Shell functions |
 | `vi-mode.zsh` | Vi keybindings for the command line |
 | `theme.zsh` | Theme-related shell helpers |
+| `local.zsh` | Machine-local overrides — gitignored, sourced last, optional |
+
+**Machine-local overrides:** anything work-, company-, or machine-specific (aliases, env vars, paths that only make sense on one machine) belongs in `zsh/shell/local.zsh`. It is gitignored so the tracked preset stays generic, and `.zshrc` sources it **last** so it can override anything above it. The file is optional — if it does not exist, nothing happens.
 
 **Vi mode** is enabled for the command line (`bindkey -v`). `Esc` switches to command mode, `i`/`a` return to insert, and the cursor changes shape with the mode. Common keys (`Ctrl-A`/`Ctrl-E`/`Ctrl-R`/`Ctrl-W`, Backspace) still work in insert mode, and `v` in command mode opens the current line in Neovim. Vi keys are also active in tmux copy mode (`v` select, `y` yank), plus Neovim, Lazygit, k9s, btop, and Zellij.
 
@@ -590,6 +864,8 @@ Notes:
 | Claude Code | AI panes in tmux/Zellij | https://docs.anthropic.com/en/docs/claude-code/overview | Installed via `npm install -g @anthropic-ai/claude-code` in this setup |
 | Pants | helper code in `nvim/lua/config/pants*.lua` | https://www.pantsbuild.org/ | Project-specific, but this repo has integrations and shortcuts for it |
 | btop | monitor pane | https://github.com/aristocratos/btop#configurability | Most settings can also be changed from the in-app menu |
+| w3m | terminal web browsing from allc and container shells | https://w3m.sourceforge.net/ | Use `w3m https://example.com` for quick text-mode page checks |
+| Mutt | terminal email client in allc and the complete container image | http://www.mutt.org/ | Configure accounts locally; do not commit mail credentials |
 
 ---
 

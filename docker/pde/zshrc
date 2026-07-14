@@ -1,0 +1,17 @@
+SHELL_CONFIG_DIR="$HOME/.config/shell"
+
+[[ -f "$SHELL_CONFIG_DIR/vi-mode.zsh" ]] && source "$SHELL_CONFIG_DIR/vi-mode.zsh"
+[[ -f "$SHELL_CONFIG_DIR/env.zsh" ]] && source "$SHELL_CONFIG_DIR/env.zsh"
+[[ -f "$SHELL_CONFIG_DIR/aliases.zsh" ]] && source "$SHELL_CONFIG_DIR/aliases.zsh"
+[[ -f "$SHELL_CONFIG_DIR/functions.zsh" ]] && source "$SHELL_CONFIG_DIR/functions.zsh"
+
+PROMPT='%F{blue}%n@%m%f:%F{cyan}%~%f %# '
+
+[[ -f /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]] \
+  && source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+[[ -f /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] \
+  && source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+[[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] \
+  && source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+export PATH="$HOME/bin:$HOME/.local/bin:$PATH"

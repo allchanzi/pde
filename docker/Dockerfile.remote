@@ -1,0 +1,76 @@
+# syntax=docker/dockerfile:1.7
+
+ARG UBUNTU_VERSION=24.04
+ARG RUST_IMAGE=rust:1.88-slim-bookworm
+ARG DOCKER_CLI_IMAGE=docker:28-cli
+
+FROM ${RUST_IMAGE} AS pde-builder
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends ca-certificates build-essential pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY pde_tui ./pde_tui
+RUN cargo build --locked --release --manifest-path pde_tui/Cargo.toml
+
+FROM ${DOCKER_CLI_IMAGE} AS docker-cli-builder
+
+FROM ubuntu:${UBUNTU_VERSION}
+
+ARG GROUP_ID=1000
+ARG PDE_VERSION=remote
+ARG USER_ID=1000
+ARG USER_NAME=allc
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+      bash btop ca-certificates coreutils curl fd-find file fzf git gzip jq \
+      openssh-client python3 ripgrep tar tmux tree unzip w3m xz-utils zsh \
+      zsh-autosuggestions zsh-syntax-highlighting \
+    && ln -s /usr/bin/fdfind /usr/local/bin/fd \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=docker-cli-builder /usr/local/bin/docker /usr/local/bin/docker
+
+COPY docker/pde/install-common-tools.sh /tmp/install-common-tools.sh
+RUN bash /tmp/install-common-tools.sh && rm /tmp/install-common-tools.sh
+
+RUN existing_user="$(getent passwd "${USER_ID}" | cut -d: -f1 || true)" \
+    && if ! getent group "${GROUP_ID}" >/dev/null; then groupadd --gid "${GROUP_ID}" "${USER_NAME}"; fi \
+    && if [ -n "${existing_user}" ]; then \
+         if [ "${existing_user}" != "${USER_NAME}" ]; then \
+           usermod --login "${USER_NAME}" --home "/home/${USER_NAME}" --move-home --gid "${GROUP_ID}" --shell /bin/zsh "${existing_user}"; \
+         else \
+           usermod --gid "${GROUP_ID}" --shell /bin/zsh "${existing_user}"; \
+         fi; \
+       else \
+         useradd --create-home --uid "${USER_ID}" --gid "${GROUP_ID}" --shell /bin/zsh "${USER_NAME}"; \
+       fi
+
+WORKDIR /opt/pde
+COPY --chown=${USER_ID}:${GROUP_ID} . .
+COPY --from=pde-builder /src/target/release/pde-tui /opt/pde/target/release/pde-tui
+
+RUN chmod +x /opt/pde/docker/pde/install.sh /opt/pde/docker/pde/entrypoint.sh \
+    && HOME="/home/${USER_NAME}" PDE_DOCKER_PROFILE=remote /opt/pde/docker/pde/install.sh \
+    && chown -R "${USER_ID}:${GROUP_ID}" "/home/${USER_NAME}"
+
+ENV HOME=/home/${USER_NAME} \
+    PATH=/home/${USER_NAME}/bin:/home/${USER_NAME}/.local/bin:/usr/local/bin:/usr/bin:/bin \
+    PDE_CONTAINER=1 \
+    PDE_REMOTE=1 \
+    PDE_DOCKER_PROFILE=remote \
+    PDE_VERSION=${PDE_VERSION} \
+    PDE_MASON_AUTO_INSTALL=0 \
+    ENABLE_PANTS=0 \
+    SHELL=/bin/zsh \
+    TERM=xterm-256color
+
+USER ${USER_NAME}
+WORKDIR /workspace
+RUN nvim --headless "+Lazy! sync" +qa
+
+ENTRYPOINT ["/opt/pde/docker/pde/entrypoint.sh"]
+CMD ["zsh", "-l"]

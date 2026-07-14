@@ -1,6 +1,7 @@
 local M = {}
 
 local cache = nil
+local uv = vim.uv or vim.loop
 local prefs_paths = {
   vim.fn.expand("~/.config/pde/prefs"),
   vim.fn.expand("~/.config/config/prefs"),
@@ -31,7 +32,7 @@ local function load()
   cache = {}
 
   for _, path in ipairs(prefs_paths) do
-    if vim.uv.fs_stat(path) then
+    if uv and uv.fs_stat(path) then
       for line in io.lines(path) do
         local key, value = line:match("^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
         if key then

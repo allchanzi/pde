@@ -14,6 +14,7 @@ bin/*
 !bin/pde-shortcuts-help
 !bin/pde-version
 !bin/tmux-open-in-nvim
+!bin/nvim-remote-open
 !bin/core/
 !bin/core/pde/
 !bin/core/pde/pde
@@ -32,6 +33,27 @@ presets/allc/dotfiles/lazygit/state.yml
 .cache/
 target/
 
+# Local Docker development environment
+/docker/*
+!/docker/Dockerfile.complete
+!/docker/Dockerfile.complete.dockerignore
+!/docker/Dockerfile.flutter
+!/docker/Dockerfile.flutter.dockerignore
+!/docker/Dockerfile.pants-python
+!/docker/Dockerfile.pants-python.dockerignore
+!/docker/Dockerfile.python-pants-dev
+!/docker/Dockerfile.python-pants-dev.dockerignore
+!/docker/Dockerfile.remote
+!/docker/Dockerfile.remote.dockerignore
+!/docker/Dockerfile.rust
+!/docker/Dockerfile.rust.dockerignore
+!/docker/pde/
+/docker/pde/*
+!/docker/pde/entrypoint.sh
+!/docker/pde/install-common-tools.sh
+!/docker/pde/install.sh
+!/docker/pde/zshrc
+
 # Neovim runtime files
 .nvimlog
 .tmp-nvim-state/
@@ -42,6 +64,9 @@ presets/allc/dotfiles/nvim/.tmp-nvim-state/
 # k9s runtime state (logs and per-cluster config are machine-specific)
 presets/allc/dotfiles/k9s/k9s.log
 presets/allc/dotfiles/k9s/clusters/
+
+# Machine-local shell overrides (work/company/machine-specific, not generic)
+presets/allc/dotfiles/zsh/shell/local.zsh
 
 # macOS
 .DS_Store
