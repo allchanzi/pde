@@ -250,6 +250,31 @@ docker build -f docker/Dockerfile.complete \
   -t pde:complete .
 ```
 
+GitHub Actions can also build and publish ready-made images to GitHub Container
+Registry (GHCR). This repository is configured to publish:
+
+- `ghcr.io/allchanzi/pde-remote:latest`
+- `ghcr.io/allchanzi/pde-python-pants-dev:latest`
+- matching version tags such as:
+  - `ghcr.io/allchanzi/pde-remote:v0.2.0`
+  - `ghcr.io/allchanzi/pde-python-pants-dev:v0.2.0`
+
+The workflow runs on:
+
+- push to `main` → refreshes `latest`
+- push of a tag like `v0.2.0` → publishes the same version tag
+- manual `workflow_dispatch`
+
+Pull examples:
+
+```bash
+docker pull ghcr.io/allchanzi/pde-remote:latest
+docker pull ghcr.io/allchanzi/pde-python-pants-dev:latest
+```
+
+If the images should be downloadable without GitHub authentication, set the GHCR
+packages to **public** in GitHub package settings after the first publish.
+
 ### Run
 
 Mount the current project at `/workspace`:
