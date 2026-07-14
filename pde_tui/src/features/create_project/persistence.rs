@@ -1,6 +1,6 @@
 pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
     let slug = slugify(&spec.name);
-    let args = vec![
+    let mut args = vec![
         "register".into(),
         spec.name.clone(),
         spec.path.clone(),
@@ -11,6 +11,10 @@ pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
         "--layout-variant".into(),
         "custom".into(),
     ];
+    for capability in &spec.capabilities {
+        args.push("--capability".into());
+        args.push(capability.clone());
+    }
     let output = Command::new(root.join("bin/core/pde/projects"))
         .args(args)
         .output()

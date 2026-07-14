@@ -45,7 +45,10 @@ Examples:
   projects
   projects open my-project -b feature/login
   projects register my-project ~/projects/my-project
+  projects register my-project ~/projects/my-project --rtui --pantsui
 """
+
+KNOWN_CAPABILITIES = ("rtui", "pantsui", "requests")
 
 
 @dataclass(slots=True)
@@ -413,6 +416,24 @@ def default_docs_command(project: Project) -> str:
     return "nvim ."
 
 
+def default_rtui_command(project: Project) -> str:
+    """Return rtui command for project."""
+
+    if project.commands.get("rtui"):
+        return project.commands["rtui"]
+    if project.commands.get("requests"):
+        return project.commands["requests"]
+    return "rtui ."
+
+
+def default_pantsui_command(project: Project) -> str:
+    """Return pantsui command for project."""
+
+    if project.commands.get("pantsui"):
+        return project.commands["pantsui"]
+    return "pantsui"
+
+
 def default_git_command() -> str:
     """Return git window command."""
 
@@ -477,6 +498,10 @@ def project_tabs(project: Project, runtime: RuntimePrefs, script_path: Path) -> 
             TabSpec(name="term2"),
         ]
     )
+    if "requests" in project.capabilities or "rtui" in project.capabilities:
+        tabs.append(TabSpec(name="rtui", command=default_rtui_command(project)))
+    if "pantsui" in project.capabilities:
+        tabs.append(TabSpec(name="pantsui", command=default_pantsui_command(project)))
     if project.layout_variant == "full":
         tabs.extend(default_monitor_tabs())
     return tabs
@@ -1529,7 +1554,18 @@ def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
         project_path.mkdir(parents=True, exist_ok=True)
 
     slug = next_unique_slug(projects, arguments.slug or name)
-    capabilities = arguments.capability or []
+    capabilities = list(arguments.capability or [])
+    if arguments.rtui:
+        capabilities.append("rtui")
+    if arguments.pantsui:
+        capabilities.append("pantsui")
+    if interactive and not capabilities:
+        capabilities = pick_many_from_list(
+            "Capabilities",
+            list(KNOWN_CAPABILITIES),
+            [],
+        )
+    capabilities = list(dict.fromkeys(capabilities))
     commands = parsed_command_pairs(arguments.command_pairs)
     layout_variant = arguments.layout_variant
     base_branch = arguments.base_branch
@@ -1611,6 +1647,10 @@ def run_capability(project: Project, capability: str) -> None:
                 command = default_docs_command(project)
             case "files":
                 command = default_files_command(project)
+            case "requests" | "rtui":
+                command = default_rtui_command(project)
+            case "pantsui":
+                command = default_pantsui_command(project)
             case _:
                 available = ", ".join(sorted(project.commands)) or "none"
                 fail(
@@ -1723,6 +1763,8 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser.add_argument("--base-branch")
     register_parser.add_argument("--layout-variant", choices=("minimal", "full", "custom"))
     register_parser.add_argument("--capability", action="append", default=[])
+    register_parser.add_argument("--rtui", action="store_true")
+    register_parser.add_argument("--pantsui", action="store_true")
     register_parser.add_argument("--command", dest="command_pairs", action="append", default=[])
     register_parser.add_argument("--create-launcher", action="store_true")
     register_parser.add_argument("--launcher-name")

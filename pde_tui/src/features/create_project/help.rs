@@ -11,6 +11,7 @@ impl CreateProjectState {
                 self.field == Field::BaseBranch,
                 theme,
             ),
+            capability_line(self, theme),
             field_line(
                 "Layout",
                 "custom windows/tabs",
@@ -42,7 +43,7 @@ impl CreateProjectState {
         }
         if self.field == Field::Layout {
             return match self.layout_mode {
-                LayoutEditMode::Navigate => "Create layout • n=[n]ew p/r/w • p=[p]resets popup • d=[d]elete p/r/w • i=[i]nsert/edit • ? help",
+                LayoutEditMode::Navigate => "Create layout • n p=new pane • n r=new row • o=on-demand presets • d p/r/w=delete • i=edit • ? help",
                 LayoutEditMode::EditCommand => "Create layout command edit • type command • Enter/Esc finish edit • ? help",
             };
         }
@@ -57,16 +58,16 @@ impl CreateProjectState {
             Line::from("Shift+Tab         Previous field"),
             Line::from("Esc               Escape/cancel / leave command edit / close confirmation"),
             Line::from("?                 Help toggle"),
+            Line::from("Capabilities      Space toggle selected; h/l switch; r/p direct toggle"),
             Line::from(""),
             Line::from(Span::styled("Layout editor", theme.title())),
-            Line::from("n w               [n]ew [w]indow/tab via popup"),
-            Line::from("p                 [p]resets popup for empty/predefined window/tab"),
+            Line::from("o                 [o]n-demand preset/window popup"),
             Line::from("n r               [n]ew [r]ow inside current window"),
             Line::from("n p               [n]ew [p]ane in current row"),
             Line::from("d w               [d]elete selected [w]indow/tab"),
             Line::from("d r               [d]elete selected [r]ow"),
             Line::from("d p               [d]elete selected [p]ane"),
-            Line::from("                  Presets: editor, ide, git, docker, k9s, monitor"),
+            Line::from("                  Presets: editor, ide, git, docker, rtui, pantsui, k9s, monitor"),
             Line::from("h/l               Vim left/right: select previous/next pane"),
             Line::from("j/k               Vim down/up: select next/previous row"),
             Line::from("[ / ]             Previous/next window/tab"),
@@ -141,4 +142,34 @@ impl CreateProjectState {
             .collect()
     }
 
+}
+
+fn capability_line(state: &CreateProjectState, theme: &UiTheme) -> Line<'static> {
+    let active = state.field == Field::Capabilities;
+    let prefix = if active { "> " } else { "  " };
+    let label_style = if active {
+        theme.help_title()
+    } else {
+        theme.title()
+    };
+    let rtui_selected = active && state.selected_capability == CapabilityChoice::Rtui;
+    let pantsui_selected = active && state.selected_capability == CapabilityChoice::Pantsui;
+    let rtui_style = if rtui_selected {
+        theme.selected()
+    } else {
+        theme.title()
+    };
+    let pantsui_style = if pantsui_selected {
+        theme.selected()
+    } else {
+        theme.title()
+    };
+    let rtui_mark = if state.enable_rtui { "[x]" } else { "[ ]" };
+    let pantsui_mark = if state.enable_pantsui { "[x]" } else { "[ ]" };
+    Line::from(vec![
+        Span::styled(format!("{prefix}{:<12}", "Capabilities"), label_style),
+        Span::styled(format!("{rtui_mark} rtui"), rtui_style),
+        Span::raw("  "),
+        Span::styled(format!("{pantsui_mark} pantsui"), pantsui_style),
+    ])
 }
