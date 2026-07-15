@@ -275,6 +275,54 @@ docker pull ghcr.io/allchanzi/pde-python-pants-dev:latest
 If the images should be downloadable without GitHub authentication, set the GHCR
 packages to **public** in GitHub package settings after the first publish.
 
+### Remote server install from a prebuilt image
+
+For a remote machine that should start directly from an already-built image, the
+simplest setup is:
+
+```bash
+docker pull ghcr.io/allchanzi/pde-python-pants-dev:latest
+
+docker run --rm -it \
+  --name pde \
+  -v "$PWD:/workspace" \
+  -v pde-home:/home/allc \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/allchanzi/pde-python-pants-dev:latest
+```
+
+Use `pde-remote` instead if you want the lighter headless image without Pants:
+
+```bash
+docker pull ghcr.io/allchanzi/pde-remote:latest
+
+docker run --rm -it \
+  --name pde \
+  -v "$PWD:/workspace" \
+  -v pde-home:/home/allc \
+  ghcr.io/allchanzi/pde-remote:latest
+```
+
+Recommended remote usage notes:
+
+- mount your project to `/workspace`
+- keep `pde-home` mounted if you want Neovim, tmux and shell state to persist
+- mount `/var/run/docker.sock` when you want Pants or tools inside the container to
+  talk to the host Docker daemon
+- if the server user is not UID/GID `1000:1000`, build your own image with
+  `--build-arg USER_ID=... --build-arg GROUP_ID=...` to avoid file ownership
+  mismatches on bind mounts
+
+Typical first commands inside the container:
+
+```bash
+pde --version
+pde
+nvim .
+rtui .
+projects list
+```
+
 ### Run
 
 Mount the current project at `/workspace`:
