@@ -530,6 +530,7 @@ For the terminal emulators and TUIs below, restart the app if you are unsure whe
 ## Theme system
 
 Themes are bash variable files in `presets/allc/themes/`. The `current` symlink points to whichever theme is active.
+The `bin/theme` entrypoint now delegates to files in `bin/theme.d/` so the generator stays split by concern.
 
 
 ### Install-time theme behavior

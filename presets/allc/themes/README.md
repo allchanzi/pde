@@ -27,6 +27,7 @@ Each theme file defines a shared palette. The `theme` script generates:
 - `nvim/lua/config/theme.lua`
 
 The currently selected theme name is stored in `themes/current`.
+The generator implementation is split across `bin/theme.d/` with `bin/theme` kept as the CLI entrypoint.
 
 Notes:
 
