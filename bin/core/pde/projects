@@ -1103,7 +1103,7 @@ def project_dir_for_code_open(
                     else "base-local-branch"
                 )
                 run_command(
-                    ["git", "worktree", "add", str(worktree_path), "-b", branch, start_point],
+                    ["git", "worktree", "add", str(worktree_path), "-b", branch, "--no-track", start_point],
                     cwd=project.path_obj,
                 )
     else:
