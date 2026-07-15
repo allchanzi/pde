@@ -117,28 +117,30 @@ impl Palette {
 }
 
 fn parse_palette(raw: &str) -> Palette {
-    let values = raw
-        .lines()
-        .filter_map(parse_assignment)
-        .collect::<HashMap<_, _>>();
+    let values = raw.lines().filter_map(parse_assignment).collect::<HashMap<_, _>>();
     let fallback = Palette::default_dark();
 
+    let color_or = |key: &str, fallback: Color| color(&values, key).unwrap_or(fallback);
+
     Palette {
-        text: color(&values, "TEXT").unwrap_or(fallback.text),
-        subtle: color(&values, "SUBTLE").unwrap_or(fallback.subtle),
-        surface0: color(&values, "SURFACE0").unwrap_or(fallback.surface0),
-        blue: color(&values, "BLUE").unwrap_or(fallback.blue),
-        pink: color(&values, "PINK").unwrap_or(fallback.pink),
-        green: color(&values, "GREEN").unwrap_or(fallback.green),
-        yellow: color(&values, "YELLOW").unwrap_or(fallback.yellow),
-        cyan: color(&values, "CYAN").unwrap_or(fallback.cyan),
-        red: color(&values, "RED").unwrap_or(fallback.red),
+        text: color_or("TEXT", fallback.text),
+        subtle: color_or("SUBTLE", fallback.subtle),
+        surface0: color_or("SURFACE0", fallback.surface0),
+        blue: color_or("BLUE", fallback.blue),
+        pink: color_or("PINK", fallback.pink),
+        green: color_or("GREEN", fallback.green),
+        yellow: color_or("YELLOW", fallback.yellow),
+        cyan: color_or("CYAN", fallback.cyan),
+        red: color_or("RED", fallback.red),
     }
 }
 
 fn parse_assignment(line: &str) -> Option<(String, String)> {
     let (key, value) = line.split_once('=')?;
     let key = key.trim();
+    if key.is_empty() || key.starts_with('#') {
+        return None;
+    }
     let value = value.trim().trim_matches('"').trim_matches('\'');
     key.chars()
         .all(|character| character.is_ascii_uppercase() || character == '_')

@@ -8,6 +8,8 @@ bin/*
 !bin/run-and-return-to-shell
 !bin/setup
 !bin/theme
+!bin/theme.d/
+!bin/theme.d/*
 !bin/ai-system-snapshot
 !bin/process-analyze
 !bin/pde-worktree
