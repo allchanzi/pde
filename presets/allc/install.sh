@@ -5,6 +5,19 @@ PRESET_DIR="$(cd "$(dirname "$0")" && pwd)"
 CONFIG_DIR="$(cd "$PRESET_DIR/../.." && pwd)"
 OS="$(uname -s)"
 THEME_MODE="${PDE_ALLC_THEME_MODE:-preserve}"
+RTUI_REPO="${RTUI_REPO:-allchanzi/rtui}"
+RTUI_VERSION="${RTUI_VERSION:-latest}"
+PANTSUI_REPO="${PANTSUI_REPO:-allchanzi/pantsui}"
+PANTSUI_VERSION="${PANTSUI_VERSION:-latest}"
+
+case "$(uname -m)" in
+  x86_64|amd64) ARCH="x86_64" ;;
+  arm64|aarch64) ARCH="aarch64" ;;
+  *)
+    echo "❌ Unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
 
 usage() {
   cat <<'USAGE'
@@ -17,6 +30,10 @@ Theme modes:
 
 Environment:
   PDE_ALLC_THEME_MODE=preserve|force|skip
+  RTUI_REPO=owner/repo
+  RTUI_VERSION=tag|latest
+  PANTSUI_REPO=owner/repo
+  PANTSUI_VERSION=tag|latest
 USAGE
 }
 
@@ -40,6 +57,21 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "$OS" in
+  Darwin)
+    RTUI_ASSET_SUFFIX="${ARCH}-apple-darwin\\.tar\\.gz$"
+    PANTSUI_ASSET_SUFFIX="${ARCH}-apple-darwin\\.tar\\.gz$"
+    ;;
+  Linux)
+    RTUI_ASSET_SUFFIX="${ARCH}-unknown-linux-gnu\\.tar\\.gz$"
+    PANTSUI_ASSET_SUFFIX="${ARCH}-unknown-linux-gnu\\.tar\\.gz$"
+    ;;
+  *)
+    echo "❌ Unsupported OS: $OS" >&2
+    exit 1
+    ;;
+esac
 
 case "$THEME_MODE" in
   preserve|skip|force) ;;
@@ -134,6 +166,114 @@ install_macos_casks() {
   fi
 }
 
+github_release_json() {
+  local repository="$1"
+  local version="${2:-latest}"
+
+  if [[ "$version" == "latest" ]]; then
+    curl --fail --location --silent --show-error \
+      "https://api.github.com/repos/${repository}/releases/latest"
+    return
+  fi
+
+  curl --fail --location --silent --show-error \
+    "https://api.github.com/repos/${repository}/releases/tags/${version}"
+}
+
+install_github_binary() {
+  local repository="$1"
+  local binary="$2"
+  local asset_pattern="$3"
+  local version="${4:-latest}"
+  local release
+  local download_url
+  local archive
+  local extract_dir
+  local executable
+
+  if ! release="$(github_release_json "$repository" "$version")"; then
+    echo "⚠️  Could not fetch release metadata for ${repository}@${version}; skipping ${binary}" >&2
+    return 1
+  fi
+
+  download_url="$(
+    jq --raw-output \
+      --arg pattern "$asset_pattern" \
+      '.assets[] | select(.name | test($pattern; "i")) | .browser_download_url' \
+      <<<"$release" \
+      | head -n 1
+  )"
+
+  if [[ -z "$download_url" || "$download_url" == "null" ]]; then
+    echo "⚠️  No matching ${binary} release asset found in ${repository} for version ${version}; skipping" >&2
+    return 1
+  fi
+
+  archive="$(mktemp)"
+  extract_dir="$(mktemp -d)"
+  curl --fail --location --silent --show-error "$download_url" --output "$archive"
+
+  case "$download_url" in
+    *.tar.gz|*.tgz) tar -xzf "$archive" -C "$extract_dir" ;;
+    *.zip) unzip -q "$archive" -d "$extract_dir" ;;
+    *)
+      echo "⚠️  Unsupported archive: $download_url; skipping ${binary}" >&2
+      return 1
+      ;;
+  esac
+
+  executable="$(find "$extract_dir" -type f -name "$binary" -perm -111 | head -n 1)"
+  if [[ -z "$executable" ]]; then
+    echo "⚠️  Executable ${binary} not found in ${download_url}; skipping" >&2
+    return 1
+  fi
+
+  install -m 0755 "$executable" "$HOME/bin/${binary}"
+  rm -rf "$archive" "$extract_dir"
+}
+
+install_allc_binaries() {
+  local installed_any=0
+
+  echo "📦 Installing rtui and pantsui..."
+  if install_github_binary \
+    "$RTUI_REPO" \
+    "rtui" \
+    "rtui-${RTUI_ASSET_SUFFIX}" \
+    "$RTUI_VERSION"; then
+    installed_any=1
+  fi
+
+  if install_github_binary \
+    "$PANTSUI_REPO" \
+    "pantsui" \
+    "pantsui-${PANTSUI_ASSET_SUFFIX}" \
+    "$PANTSUI_VERSION"; then
+    installed_any=1
+  fi
+
+  return 0
+}
+
+verify_allc_binaries() {
+  local missing=()
+
+  if ! command -v rtui >/dev/null 2>&1; then
+    missing+=("rtui")
+  fi
+
+  if ! command -v pantsui >/dev/null 2>&1; then
+    missing+=("pantsui")
+  fi
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    echo "⚠️  Optional binaries not available after install: ${missing[*]}" >&2
+    echo "   You can pin versions with RTUI_VERSION / PANTSUI_VERSION, or install them manually." >&2
+  else
+    echo "✅ Verified: rtui and pantsui are available"
+  fi
+}
+
 ########################################
 # Install Homebrew if missing
 ########################################
@@ -169,6 +309,9 @@ echo "🍺 Using brew: $(command -v brew)"
 
 echo "📦 Installing packages from Brewfile..."
 brew bundle --file="$PRESET_DIR/Brewfile"
+
+install_allc_binaries
+verify_allc_binaries
 
 if [[ "$OS" == "Darwin" && -f "$PRESET_DIR/Brewfile.macOS" ]]; then
   echo "🍎 Installing macOS-only packages from Brewfile.macOS..."
