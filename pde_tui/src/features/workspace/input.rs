@@ -32,6 +32,7 @@ impl WorkspaceState {
             }
             KeyCode::Char('G') => self.move_last()?,
             KeyCode::Char('a') => self.add_action(),
+            KeyCode::Char('b') => self.branches_action(),
             KeyCode::Char('d') => self.delete_action(),
             KeyCode::Char('o') | KeyCode::Enter => self.open_action(),
             _ => Effect::None,
