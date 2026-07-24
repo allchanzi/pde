@@ -66,10 +66,26 @@ ln -sf "$CONFIG_DIR/bin/pde" "$BIN_DIR/pde"
 ln -sf "$CONFIG_DIR/bin/projects" "$BIN_DIR/projects"
 ln -sf "$CONFIG_DIR/bin/pde-worktree" "$BIN_DIR/pde-worktree"
 
+install_cargo_tool() {
+  # Build and install the latest tool from its git repo into $BIN_DIR.
+  # cargo install --root DIR places binaries in DIR/bin.
+  local name="$1" repo="$2" branch="$3"
+  local root="${BIN_DIR%/bin}"
+  echo "🦀 Installing latest $name from $repo (branch $branch)..."
+  if CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install --git "$repo" --branch "$branch" --root "$root" --force; then
+    echo "✅ Installed $name"
+  else
+    echo "⚠️  Failed to install $name from $repo — skipping (build it manually if needed)." >&2
+  fi
+}
+
 if command -v cargo >/dev/null 2>&1; then
   echo "🦀 Building PDE TUI..."
   cargo build --release --manifest-path "$CONFIG_DIR/pde_tui/Cargo.toml"
   ln -sf "$CONFIG_DIR/target/release/pde-tui" "$BIN_DIR/pde-tui"
+
+  install_cargo_tool "rtui" "https://github.com/allchanzi/rtui.git" "main"
+  install_cargo_tool "pantsui" "https://github.com/allchanzi/pantsui.git" "mvp"
 else
   echo "❌ cargo not found. Install Rust/Cargo, then re-run ./install.sh." >&2
   echo "Recommended official installer:" >&2
