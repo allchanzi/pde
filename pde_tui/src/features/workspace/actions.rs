@@ -68,6 +68,24 @@ impl WorkspaceState {
         }
     }
 
+    fn existing_action(&self) -> Effect {
+        match self.focus {
+            FocusPane::Projects | FocusPane::Workspaces => self
+                .selected_project()
+                .map(|project| {
+                    Effect::Suspend(ExternalCommand::CorePdeWorktree(vec![
+                        "existing".into(),
+                        "--project".into(),
+                        project.slug.clone(),
+                    ]))
+                })
+                .unwrap_or(Effect::None),
+            FocusPane::GlobalSessions | FocusPane::ProjectSessions => Effect::Message(
+                "Existing worktrees: switch focus to Projects or Workspaces first".into(),
+            ),
+        }
+    }
+
     fn delete_action(&self) -> Effect {
         match self.focus {
             FocusPane::Projects => self
