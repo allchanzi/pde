@@ -37,6 +37,8 @@ impl WorkspaceState {
             FocusPane::Projects => vec![
                 Line::from("Enter/o Open selected project"),
                 Line::from("a      [a]dd/register project"),
+                Line::from("b      [b]ranch picker: open/create worktree"),
+                Line::from("e      [e]xisting worktree picker"),
                 Line::from("d      [d]elete selected project registration"),
                 Line::from("j/k    Vim down/up: move selection"),
                 Line::from("gg/G   First/last item"),
@@ -50,6 +52,8 @@ impl WorkspaceState {
             FocusPane::Workspaces => vec![
                 Line::from("Enter/o Open selected workspace/worktree"),
                 Line::from("a      [a]dd new worktree"),
+                Line::from("b      [b]ranch picker: open/create worktree"),
+                Line::from("e      [e]xisting worktree picker"),
                 Line::from("d      [d]elete selected worktree"),
                 Line::from("j/k    Vim down/up: move selection"),
             ],
