@@ -117,7 +117,10 @@ impl Palette {
 }
 
 fn parse_palette(raw: &str) -> Palette {
-    let values = raw.lines().filter_map(parse_assignment).collect::<HashMap<_, _>>();
+    let values = raw
+        .lines()
+        .filter_map(parse_assignment)
+        .collect::<HashMap<_, _>>();
     let fallback = Palette::default_dark();
 
     let color_or = |key: &str, fallback: Color| color(&values, key).unwrap_or(fallback);

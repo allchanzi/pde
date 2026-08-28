@@ -73,7 +73,7 @@ fn slugify(value: &str) -> String {
 }
 
 fn adjust_ratio(value: &mut u16, delta: i16) {
-    *value = ((*value as i16 + delta).max(1).min(99)) as u16;
+    *value = (*value as i16 + delta).clamp(1, 99) as u16;
 }
 
 fn write_custom_layouts(slug: &str, tabs: &[LayoutTab]) -> Result<()> {

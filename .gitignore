@@ -41,6 +41,8 @@ target/
 !/docker/Dockerfile.complete.dockerignore
 !/docker/Dockerfile.flutter
 !/docker/Dockerfile.flutter.dockerignore
+!/docker/Dockerfile.install-smoke
+!/docker/Dockerfile.install-smoke.dockerignore
 !/docker/Dockerfile.pants-python
 !/docker/Dockerfile.pants-python.dockerignore
 !/docker/Dockerfile.python-pants-dev

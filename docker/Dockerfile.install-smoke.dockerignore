@@ -1,0 +1,8 @@
+.git
+.claude
+.tmp-nvim-data
+.tmp-nvim-state
+target
+nvim.log
+.DS_Store
+
