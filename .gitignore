@@ -14,6 +14,7 @@ bin/*
 !bin/process-analyze
 !bin/pde-worktree
 !bin/pde-shortcuts-help
+!bin/pde-update
 !bin/pde-version
 !bin/tmux-open-in-nvim
 !bin/nvim-remote-open
