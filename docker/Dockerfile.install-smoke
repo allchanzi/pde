@@ -1,0 +1,13 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PDE_INSTALL_COMPANIONS=0
+
+COPY . /opt/pde
+WORKDIR /opt/pde
+
+RUN ./install.sh \
+    && /root/bin/projects list \
+    && python3 --version \
+    && tmux -V \
+    && zsh -lc 'pde --version && cargo --version'

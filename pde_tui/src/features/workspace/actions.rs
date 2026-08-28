@@ -15,6 +15,10 @@ impl WorkspaceState {
         ))
     }
 
+    fn update_action(&self) -> Effect {
+        Effect::Suspend(ExternalCommand::PdeUpdate(vec![]))
+    }
+
     fn refresh_detail(&mut self) -> Result<()> {
         self.detail = self
             .selected_project()

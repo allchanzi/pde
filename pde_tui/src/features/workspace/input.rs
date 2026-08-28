@@ -22,6 +22,7 @@ impl WorkspaceState {
             KeyCode::Char('q') | KeyCode::Esc => Effect::Quit,
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::Char('r') => self.refresh_all()?,
+            KeyCode::Char('u') => self.update_action(),
             KeyCode::Char('h') | KeyCode::Left => self.move_focus_left(),
             KeyCode::Char('l') | KeyCode::Right => self.move_focus_right(),
             KeyCode::Down | KeyCode::Char('j') => self.move_down()?,

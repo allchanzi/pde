@@ -80,6 +80,7 @@ impl WorkspaceState {
                 Line::from("gg / G            Vim: first / last item"),
                 Line::from("Ctrl+d / Ctrl+u   Vim: page down / up"),
                 Line::from("r                 [r]efresh"),
+                Line::from("u                 [u]pdate PDE, rtui and pantsui"),
                 Line::from("q / Esc           [q]uit / escape"),
             ],
         ]

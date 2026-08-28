@@ -17,9 +17,10 @@ brew "eza"
 brew "git"
 brew "tree-sitter-cli"
 brew "curl"
+brew "unzip"
 brew "w3m"
 brew "mutt"
-brew "rust"
+brew "python"
 
 # Useful general terminal tools
 brew "watch"
@@ -40,7 +41,13 @@ brew "atuin"
 # --------------------------------------------
 brew "lazygit"
 brew "lazydocker"
+brew "glab"
+
+# Kubernetes / cloud tooling
+brew "kubernetes-cli"
 brew "k9s"
+cask "gcloud-cli"
+cask "1password-cli"
 
 # Optional but useful for JSON/YAML work
 brew "jq"

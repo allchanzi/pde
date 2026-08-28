@@ -105,6 +105,8 @@ fn render_project_sessions(
     );
 }
 
+// Keeping the rendering inputs explicit makes the two call sites easier to compare.
+#[allow(clippy::too_many_arguments)]
 fn render_session_panel(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,

@@ -20,8 +20,10 @@ if [[ "$has_tmux" -eq 0 && "$has_zellij" -eq 0 ]]; then
   cat >&2 <<'MSG'
 ❌ PDE requires at least one multiplexer installed: tmux or zellij.
 Install one of them, then re-run install:
-  brew install tmux
-  brew install zellij
+  Ubuntu/Debian: sudo apt install tmux
+  Fedora:       sudo dnf install tmux
+  Arch:         sudo pacman -S tmux
+  macOS:        brew install tmux
 MSG
   exit 1
 fi

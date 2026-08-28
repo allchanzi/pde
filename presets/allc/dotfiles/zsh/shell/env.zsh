@@ -25,7 +25,7 @@ pyenv() {
 }
 
 # Local bin
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 
 # PDE runtime/state paths. Keep logs and app runtime data out of repo symlinked config.
 export PDE_STATE_HOME="${PDE_STATE_HOME:-$HOME/.local/state/pde}"
@@ -43,6 +43,8 @@ fi
 if [[ -n "${HOMEBREW_PREFIX:-}" ]]; then
   [[ -d "$HOMEBREW_PREFIX/opt/openjdk@21/bin" ]] && export PATH="$HOMEBREW_PREFIX/opt/openjdk@21/bin:$PATH"
   [[ -d "$HOMEBREW_PREFIX/opt/openjdk@17/bin" ]] && export PATH="$HOMEBREW_PREFIX/opt/openjdk@17/bin:$PATH"
+  [[ -d "$HOMEBREW_PREFIX/share/google-cloud-sdk/bin" ]] \
+    && export PATH="$HOMEBREW_PREFIX/share/google-cloud-sdk/bin:$PATH"
 fi
 
 # History

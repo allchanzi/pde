@@ -233,26 +233,26 @@ install_github_binary() {
 }
 
 install_allc_binaries() {
-  local installed_any=0
-
   echo "📦 Installing rtui and pantsui..."
-  if install_github_binary \
-    "$RTUI_REPO" \
-    "rtui" \
-    "rtui-${RTUI_ASSET_SUFFIX}" \
-    "$RTUI_VERSION"; then
-    installed_any=1
+  if command -v rtui >/dev/null 2>&1; then
+    echo "Using existing rtui: $(command -v rtui)"
+  else
+    install_github_binary \
+      "$RTUI_REPO" \
+      "rtui" \
+      "rtui-${RTUI_ASSET_SUFFIX}" \
+      "$RTUI_VERSION" || true
   fi
 
-  if install_github_binary \
-    "$PANTSUI_REPO" \
-    "pantsui" \
-    "pantsui-${PANTSUI_ASSET_SUFFIX}" \
-    "$PANTSUI_VERSION"; then
-    installed_any=1
+  if command -v pantsui >/dev/null 2>&1; then
+    echo "Using existing pantsui: $(command -v pantsui)"
+  else
+    install_github_binary \
+      "$PANTSUI_REPO" \
+      "pantsui" \
+      "pantsui-${PANTSUI_ASSET_SUFFIX}" \
+      "$PANTSUI_VERSION" || true
   fi
-
-  return 0
 }
 
 verify_allc_binaries() {
@@ -309,6 +309,17 @@ echo "🍺 Using brew: $(command -v brew)"
 
 echo "📦 Installing packages from Brewfile..."
 brew bundle --file="$PRESET_DIR/Brewfile"
+
+echo "☁️  Verifying cloud, GitLab and Kubernetes tools..."
+missing_allc_tools=()
+for tool in op glab kubectl gcloud k9s; do
+  command -v "$tool" >/dev/null 2>&1 || missing_allc_tools+=("$tool")
+done
+if [[ "${#missing_allc_tools[@]}" -gt 0 ]]; then
+  echo "❌ Required allc tools are missing after brew bundle: ${missing_allc_tools[*]}" >&2
+  exit 1
+fi
+echo "✅ Verified: op, glab, kubectl, gcloud and k9s"
 
 install_allc_binaries
 verify_allc_binaries

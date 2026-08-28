@@ -1,6 +1,6 @@
 # Personal Development Environment
 
-A terminal-first PDE app with a Rust TUI, CLI wrappers, and optional install presets. The default install is intentionally empty/minimal: it installs the app, creates PDE config, and verifies that either tmux or Zellij is available. Opinionated dotfiles live in the tracked `allc` preset.
+A terminal-first PDE app with a Rust TUI, CLI wrappers, and optional install presets. On Linux, the installer bootstraps missing system build tools, Python, Zsh, Rust, and a default multiplexer. Opinionated dotfiles live in the tracked `allc` preset.
 
 ---
 
@@ -28,7 +28,8 @@ A terminal-first PDE app with a Rust TUI, CLI wrappers, and optional install pre
 
 ## Highlights
 
-- Minimal default install for PDE TUI/CLI plus tmux or Zellij verification
+- Linux bootstrap for system prerequisites, Rust, Python, and tmux when needed
+- Minimal default install for the PDE TUI/CLI and one multiplexer
 - Optional `allc` preset for opinionated dotfiles, terminals, themes, shortcuts, and Neovim setup
 - Choice of `tmux` or `zellij`, with per-user preferences stored outside git
 - Registry-driven project picker (`projects`) with git worktree/session support
@@ -42,8 +43,9 @@ A terminal-first PDE app with a Rust TUI, CLI wrappers, and optional install pre
 ```bash
 git clone https://github.com/allchanzi/pde.git ~/pde
 cd ~/pde
-./install.sh              # app + default preset
+./install.sh              # Linux: bootstrap + app + default preset
 # optional: ./install.sh --preset allc
+exec "$SHELL" -l
 pde
 ```
 
@@ -59,7 +61,7 @@ projects
 
 ## Overview
 
-The repo is split into the PDE app and install presets. The app-first root install builds the Rust TUI, links CLI wrappers, creates `~/.config/pde`, and runs `presets/default`. The default preset only checks that a multiplexer is installed and writes minimal config. The `presets/allc` preset is the tracked opinionated setup with dotfiles, terminal configs, themes, shortcuts, Homebrew packages, and Neovim setup.
+The repo is split into the PDE app and install presets. On Linux, the root installer first installs missing distribution packages and Rust. It then builds the Rust TUI, installs the companion `rtui` and `pantsui` tools, links CLI wrappers, creates `~/.config/pde`, and runs the selected preset. The default preset writes minimal config and uses the tmux installed by the bootstrap when no multiplexer was already present. The `presets/allc` preset is the tracked opinionated setup with dotfiles, terminal configs, themes, shortcuts, Homebrew packages, and Neovim setup.
 
 Machine-local choices live in `~/.config/pde/prefs` and optional local override files under `~/.config/tmux/` or `~/.config/zellij/layouts/`.
 
@@ -88,14 +90,18 @@ pde/
 
 ## Requirements
 
-Default install requirements:
+Bootstrap requirements:
 
 - macOS or Linux
-- `git`
-- Rust/Cargo
-- one multiplexer: `tmux` or `zellij`
+- `git` to clone the repository
+- network access to Rustup and the companion Git repositories
+- `sudo` or a root shell when Linux system packages are missing
 
-If `./install.sh` says that Cargo is missing, install Rust through the official `rustup` installer, then restart your shell:
+Supported Linux package managers are `apt-get`, `dnf`, `pacman`, `zypper`, and `apk` for the default preset. The `allc` preset requires a glibc distribution and does not support Alpine/musl because Homebrew and the downloaded companion release assets target GNU Linux.
+
+On Linux, `./install.sh` installs missing C/C++ build tools, `pkg-config`, `procps`, `curl`, `file`, `unzip`, Python 3, Zsh, and tmux when needed. It installs the minimal stable Rust toolchain through Rustup when Cargo is absent. Use `--no-bootstrap` or `PDE_BOOTSTRAP=0` to manage these prerequisites yourself.
+
+On macOS, or when automatic bootstrap is disabled, install Rust through the official `rustup` installer if Cargo is missing:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -103,13 +109,7 @@ source "$HOME/.cargo/env"
 cargo --version
 ```
 
-On macOS you can also install Rust with Homebrew if you prefer package-manager installs:
-
-```bash
-brew install rust
-```
-
-The optional `allc` preset additionally expects/installs a larger Homebrew-based toolchain, terminal configs, Neovim config, themes, fonts, and shell integrations.
+The optional `allc` preset additionally expects/installs a larger Homebrew-based toolchain, terminal configs, Neovim config, themes, fonts, shell integrations, GitLab CLI, and cloud/Kubernetes CLIs (`op`, `glab`, `kubectl`, `gcloud`, and `k9s`).
 
 ---
 
@@ -121,6 +121,18 @@ Minimal PDE app + default preset:
 git clone https://github.com/allchanzi/pde.git ~/pde
 cd ~/pde
 ./install.sh
+exec "$SHELL" -l
+pde
+```
+
+On a fresh Ubuntu/Debian installation, only Git is needed before cloning:
+
+```bash
+sudo apt update && sudo apt install -y git
+git clone https://github.com/allchanzi/pde.git ~/pde
+cd ~/pde
+./install.sh --preset allc
+exec zsh -l
 pde
 ```
 
@@ -130,6 +142,8 @@ Opinionated `allc` preset:
 ./install.sh --preset allc                  # preserve current theme state
 ./install.sh --preset allc --force-theme    # re-apply presets/allc/themes/current
 ./install.sh --preset allc --no-theme       # explicit theme skip
+./install.sh --no-bootstrap                 # validate/use prerequisites already installed
+./install.sh --no-companions                # skip rtui and pantsui
 ```
 
 Or run a preset directly after installing the app:
@@ -141,12 +155,19 @@ Or run a preset directly after installing the app:
 
 `install.sh` does the following:
 
-1. Builds `pde_tui` with Cargo
-2. Symlinks app wrappers into `~/bin`
-3. Runs `presets/<name>/install.sh`
+1. On Linux, installs missing distribution prerequisites and tmux when required
+2. Installs Rust with Rustup when Cargo is missing
+3. Builds `pde_tui` with Cargo
+4. Installs the latest `rtui` (`main`) and `pantsui` (`main`) from their Git repositories
+5. Symlinks app wrappers into `~/bin`
+6. Runs `presets/<name>/install.sh`
 
-`presets/default` only creates empty PDE config and verifies `tmux`/`zellij`.
+`presets/default` creates empty PDE config and verifies `tmux`/`zellij`.
 `presets/allc` installs/links the tracked dotfiles and preferred tools. By default it preserves theme state; pass `--force-theme` or set `PDE_ALLC_THEME_MODE=force` when you want installation to re-apply the tracked current theme.
+
+The `allc` preset installs the 1Password CLI, GitLab CLI, Kubernetes CLI, Google Cloud CLI, and K9s through Homebrew. Authentication and state remain machine-local: use `op signin`, `glab auth login`, `gcloud auth login`, and your local `~/.kube/config`; the installer never writes credentials into the repository.
+
+The installer intentionally does not copy machine-local project paths, preferences, credentials, SSH/GPG keys, or AI-provider logins. Those remain outside Git under `~/.config/pde` and the respective tools' state directories. Linux GUI terminal packages and desktop fonts also remain distribution/desktop choices; the `allc` preset links their configs when the applications are installed.
 
 Runtime/log/state data is intentionally kept outside the repo:
 
@@ -1025,6 +1046,10 @@ Update helper for this PDE repo. Supports:
 - `pde update` — fetch + fast-forward pull + re-run `install.sh`
 - `pde update --check` — show branch/upstream status without changing anything
 - `pde update --install-only` — skip git pull and only re-run `install.sh`
+
+From the PDE TUI workspace, press `u` to suspend the interface and run the same
+`pde update` flow. The installer fetches and rebuilds the current `rtui` `main`
+and `pantsui` `main` branches even when neither binary was previously installed.
 
 ### `projects`
 
