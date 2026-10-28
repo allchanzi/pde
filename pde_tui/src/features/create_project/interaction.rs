@@ -2,12 +2,18 @@ impl CreateProjectState {
     pub fn new() -> Self {
         let capabilities_enabled = default_capabilities_enabled();
         Self {
+            edit_slug: None,
+            extra_capabilities: vec![],
             field: Field::Name,
             name: String::new(),
             path: default_path("project"),
             base_branch: "main".into(),
-            enable_rtui: capabilities_enabled,
-            enable_pantsui: capabilities_enabled,
+            multiplexers: ["tmux", "zellij"].into_iter().filter(|command| command_available(command)).map(str::to_string).collect(),
+            selected_multiplexer: 0,
+            available_rtui: command_available("rtui"),
+            available_pantsui: command_available("pantsui"),
+            enable_rtui: capabilities_enabled && command_available("rtui"),
+            enable_pantsui: capabilities_enabled && command_available("pantsui"),
             selected_capability: CapabilityChoice::Rtui,
             layout: vec![LayoutTab {
                 name: "terminal".into(),
@@ -51,6 +57,16 @@ impl CreateProjectState {
         }
 
         Ok(match key.code {
+            KeyCode::Left | KeyCode::Char('h') if self.field == Field::Multiplexer => {
+                self.selected_multiplexer = self.selected_multiplexer.saturating_sub(1);
+                Effect::None
+            }
+            KeyCode::Right | KeyCode::Char('l') | KeyCode::Char(' ') if self.field == Field::Multiplexer => {
+                if !self.multiplexers.is_empty() {
+                    self.selected_multiplexer = (self.selected_multiplexer + 1) % self.multiplexers.len();
+                }
+                Effect::None
+            }
             KeyCode::Char('?') => Effect::ToggleHelp,
             KeyCode::Esc => Effect::CloseCreateProject,
             KeyCode::Enter if self.field == Field::Layout => self.request_confirmation(),
@@ -126,17 +142,17 @@ impl CreateProjectState {
             KeyCode::Char('i') if self.field == Field::Layout => {
                 self.layout_mode = LayoutEditMode::EditCommand;
                 Effect::Message(
-                    "Layout command edit mode: type command, Esc returns to navigation".into(),
+                    "Edit pane command • type command • [Esc] finish".into(),
                 )
             }
             KeyCode::Char('o') if self.field == Field::Layout => self.open_new_pane_picker(),
             KeyCode::Char('n') if self.field == Field::Layout => {
                 self.pending_n = true;
-                Effect::Message("Layout: n p=new pane, n r=new row; o=on-demand presets".into())
+                Effect::Message("Add: [p]ane beside selected pane / [r]ow below selected row • [Esc] cancel".into())
             }
             KeyCode::Char('d') if self.field == Field::Layout => {
                 self.pending_delete = true;
-                Effect::Message("Layout delete: d p=pane, d r=row, d w=window/tab".into())
+                Effect::Message("Delete: [p]ane / [r]ow / [w] whole tab • [Esc] cancel".into())
             }
             KeyCode::Char(character) if self.field != Field::Layout => {
                 self.push_char(character);

@@ -56,15 +56,17 @@ keybinds clear-defaults=true {
             }
             SwitchToMode "Normal"
         }
+        // Enter Session mode so the built-in status bar can show this action.
+        bind "s" { SwitchToMode "Session"; }
         bind "d" { Detach; }
         bind "X" { Quit; }
         bind "Q" { Quit; }
 
         // ── Resize — mirrors tmux C-a + WASD ──
-        // (d = detach, so resize right uses Shift-D)
+        // (d = detach, s = Session mode, so resize right uses Shift-D;
+        // resize down remains available in Resize mode via C-a r, s)
         bind "a" { Resize "Increase Left"; SwitchToMode "Normal"; }
         bind "w" { Resize "Increase Up"; SwitchToMode "Normal"; }
-        bind "s" { Resize "Increase Down"; SwitchToMode "Normal"; }
         bind "D" { Resize "Increase Right"; SwitchToMode "Normal"; }
 
         // ── Extra top-level actions shown in the status bar ──
@@ -73,7 +75,6 @@ keybinds clear-defaults=true {
         bind "r" { SwitchToMode "Resize"; }
         bind "m" { SwitchToMode "Move"; }
         bind "[" { SwitchToMode "Scroll"; }
-        bind "o" { SwitchToMode "Session"; }
         bind "h" {
             Run "zsh" "-lc" "pde shortcuts-help all | less -R" {
                 floating true
@@ -225,6 +226,7 @@ keybinds clear-defaults=true {
     }
 
     session {
+        // In Session mode the built-in status bar labels this as "Manager".
         bind "d" { Detach; }
         bind "x" "X" "q" "Q" { Quit; }
         bind "w" {

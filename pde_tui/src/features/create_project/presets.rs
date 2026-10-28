@@ -95,7 +95,7 @@ impl NewPaneChoice {
 
     fn label(self) -> &'static str {
         match self {
-            Self::EmptyPane => "Empty window",
+            Self::EmptyPane => "Empty tab",
             Self::EditorTab => "Editor tab",
             Self::IdeTab => "IDE tab",
             Self::GitTab => "Git tab",
@@ -109,7 +109,7 @@ impl NewPaneChoice {
 
     fn description(self) -> &'static str {
         match self {
-            Self::EmptyPane => "New empty window/tab with one shell pane",
+            Self::EmptyPane => "New empty tab/tab with one shell pane",
             Self::EditorTab => "New tab running ${EDITOR:-nvim} .",
             Self::IdeTab => "New tab: editor left, AI top-right, terminal bottom-right",
             Self::GitTab => "New tab running lazygit",
@@ -119,5 +119,21 @@ impl NewPaneChoice {
             Self::K9sTab => "New tab running k9s",
             Self::MonitorTab => "New tab with network monitor and htop/top",
         }
+    }
+}
+
+impl CreateProjectState {
+    fn available_presets(&self) -> Vec<NewPaneChoice> {
+        NEW_PANE_CHOICES.into_iter().filter(|choice| match choice {
+            NewPaneChoice::EmptyPane => true,
+            NewPaneChoice::EditorTab => command_available(env::var("EDITOR").unwrap_or_else(|_| "nvim".into()).split_whitespace().next().unwrap_or("nvim")),
+            NewPaneChoice::IdeTab => command_available(env::var("EDITOR").unwrap_or_else(|_| "nvim".into()).split_whitespace().next().unwrap_or("nvim")) && command_available(env::var("AI_COMMAND_1").unwrap_or_else(|_| "codex".into()).split_whitespace().next().unwrap_or("codex")),
+            NewPaneChoice::GitTab => command_available("lazygit"),
+            NewPaneChoice::DockerTab => command_available("lazydocker"),
+            NewPaneChoice::RtuiTab => self.available_rtui,
+            NewPaneChoice::PantsuiTab => self.available_pantsui,
+            NewPaneChoice::K9sTab => command_available("k9s"),
+            NewPaneChoice::MonitorTab => (command_available("top") || command_available("htop")) && (command_available("network-ports") || command_available("lsof")),
+        }).collect()
     }
 }

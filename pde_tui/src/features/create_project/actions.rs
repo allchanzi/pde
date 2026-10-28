@@ -1,11 +1,12 @@
 impl CreateProjectState {
     fn handle_confirm_key(&mut self, key: KeyCode) -> Effect {
         match key {
-            KeyCode::Enter => self.submit(),
-            KeyCode::Esc => {
+            KeyCode::Char('y' | 'Y') => self.submit(),
+            KeyCode::Char('n' | 'N') => {
                 self.confirm = ConfirmState::Editing;
                 Effect::None
             }
+            KeyCode::Char('?') => Effect::ToggleHelp,
             _ => Effect::None,
         }
     }
@@ -14,7 +15,9 @@ impl CreateProjectState {
         self.field = match self.field {
             Field::Name => Field::Path,
             Field::Path => Field::BaseBranch,
-            Field::BaseBranch => Field::Capabilities,
+            Field::BaseBranch => Field::Multiplexer,
+            Field::Multiplexer => Field::Capabilities,
+            Field::Capabilities if self.edit_slug.is_some() => return self.request_confirmation(),
             Field::Capabilities => Field::Layout,
             Field::Layout => return self.request_confirmation(),
         };
@@ -26,12 +29,16 @@ impl CreateProjectState {
             Field::Name => Field::Name,
             Field::Path => Field::Name,
             Field::BaseBranch => Field::Path,
-            Field::Capabilities => Field::BaseBranch,
+            Field::Multiplexer => Field::BaseBranch,
+            Field::Capabilities => Field::Multiplexer,
             Field::Layout => Field::Capabilities,
         };
     }
 
     fn request_confirmation(&mut self) -> Effect {
+        if self.multiplexers.is_empty() {
+            return Effect::Message("Install tmux or zellij before creating a project".into());
+        }
         if self.name.trim().is_empty() {
             return Effect::Message("Project name is required".into());
         }
@@ -44,16 +51,18 @@ impl CreateProjectState {
 
     fn submit(&self) -> Effect {
         Effect::CreateProjectSubmit(CreateProjectSpec {
+            edit_slug: self.edit_slug.clone(),
             name: self.name.trim().into(),
             path: self.path.trim().into(),
             base_branch: self.base_branch.trim().into(),
+            multiplexer: self.multiplexers[self.selected_multiplexer].clone(),
             capabilities: self.capabilities(),
             layout: self.layout.clone(),
         })
     }
 
     fn capabilities(&self) -> Vec<String> {
-        let mut capabilities = Vec::new();
+        let mut capabilities = self.extra_capabilities.clone();
         if self.enable_rtui {
             capabilities.push("rtui".into());
         }
@@ -65,8 +74,9 @@ impl CreateProjectState {
 
     fn toggle_selected_capability(&mut self) {
         match self.selected_capability {
-            CapabilityChoice::Rtui => self.enable_rtui = !self.enable_rtui,
-            CapabilityChoice::Pantsui => self.enable_pantsui = !self.enable_pantsui,
+            CapabilityChoice::Rtui if self.available_rtui => self.enable_rtui = !self.enable_rtui,
+            CapabilityChoice::Pantsui if self.available_pantsui => self.enable_pantsui = !self.enable_pantsui,
+            _ => {}
         }
     }
 
@@ -86,7 +96,7 @@ impl CreateProjectState {
             }
             KeyCode::Char('p') => {
                 self.add_pane();
-                Effect::Message("Added empty pane/cell".into())
+                Effect::Message("Added empty pane".into())
             }
             _ => Effect::None,
         }
@@ -133,10 +143,10 @@ impl CreateProjectState {
     }
 
     fn move_new_pane_picker(&mut self, delta: i16) {
+        let max_index = self.available_presets().len() - 1;
         let Some(picker) = &mut self.new_pane_picker else {
             return;
         };
-        let max_index = NEW_PANE_CHOICES.len() - 1;
         picker.selected = if delta < 0 {
             picker.selected.saturating_sub(1)
         } else {
@@ -149,15 +159,18 @@ impl CreateProjectState {
             .new_pane_picker
             .map(|picker| picker.selected)
             .unwrap_or_default();
-        self.apply_new_pane_choice(NEW_PANE_CHOICES[selected])
+        self.apply_new_pane_choice(self.available_presets()[selected])
     }
 
     fn apply_new_pane_choice(&mut self, choice: NewPaneChoice) -> Effect {
+        if !self.available_presets().contains(&choice) {
+            return Effect::Message("This tool is not installed".into());
+        }
         self.new_pane_picker = None;
         match choice {
             NewPaneChoice::EmptyPane => {
                 self.add_window();
-                Effect::Message("Added empty window/tab".into())
+                Effect::Message("Added empty tab".into())
             }
             NewPaneChoice::EditorTab => self.add_preset_tab(editor_tab()),
             NewPaneChoice::IdeTab => self.add_preset_tab(ide_tab()),
@@ -203,7 +216,7 @@ impl CreateProjectState {
             Field::Name => self.name.push(character),
             Field::Path => self.path.push(character),
             Field::BaseBranch => self.base_branch.push(character),
-            Field::Capabilities => {}
+            Field::Multiplexer | Field::Capabilities => {}
             Field::Layout => self.current_pane_mut().command.push(character),
         }
         self.update_default_path();
@@ -220,7 +233,7 @@ impl CreateProjectState {
             Field::BaseBranch => {
                 self.base_branch.pop();
             }
-            Field::Capabilities => {}
+            Field::Multiplexer | Field::Capabilities => {}
             Field::Layout => {}
         }
         self.update_default_path();
@@ -241,7 +254,7 @@ impl CreateProjectState {
     fn add_window(&mut self) {
         let index = self.layout.len() + 1;
         self.layout.push(LayoutTab {
-            name: format!("window{index}"),
+            name: format!("tab{index}"),
             rows: vec![LayoutRow {
                 ratio: 1,
                 panes: vec![LayoutPane {
@@ -278,18 +291,18 @@ impl CreateProjectState {
 
     fn delete_window(&mut self) -> Effect {
         if self.layout.len() <= 1 {
-            return Effect::Message("Cannot delete the last window/tab".into());
+            return Effect::Message("Cannot delete the last tab".into());
         }
         let removed = self.layout.remove(self.selected_tab).name;
         self.selected_tab = self.selected_tab.saturating_sub(1).min(self.layout.len() - 1);
         self.selected_row = 0;
         self.selected_pane = 0;
-        Effect::Message(format!("Deleted window/tab: {removed}"))
+        Effect::Message(format!("Deleted tab: {removed}"))
     }
 
     fn delete_row(&mut self) -> Effect {
         if self.current_tab().rows.len() <= 1 {
-            return Effect::Message("Cannot delete the last row in a window/tab".into());
+            return Effect::Message("Cannot delete the last row in a tab".into());
         }
         let row = self.selected_row;
         self.current_tab_mut().preset = None;

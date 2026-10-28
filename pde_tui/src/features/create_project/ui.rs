@@ -4,16 +4,31 @@ pub fn render(
     state: &CreateProjectState,
     theme: &UiTheme,
     cursor_enabled: bool,
+    message: &str,
 ) {
     frame.render_widget(Clear, area);
+    let [content, footer] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(3), Constraint::Length(5)])
+        .areas(area);
+    let footer_lines = vec![
+        theme.shortcut_line(if message.contains('[') { "" } else { message }),
+        theme.shortcut_line(state.footer_help()),
+    ];
+    frame.render_widget(
+        Paragraph::new(footer_lines)
+            .block(Block::default().borders(Borders::ALL).title(format!(" {} / shortcuts ", state.title())).border_style(theme.focused_border()))
+            .wrap(Wrap { trim: true }),
+        footer,
+    );
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(44), Constraint::Percentage(56)])
-        .split(area);
+        .split(content);
 
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Create project ")
+        .title(format!(" {} ", state.title()))
         .border_style(theme.focused_border());
     let paragraph = Paragraph::new(state.lines(theme))
         .block(block)
@@ -22,9 +37,13 @@ pub fn render(
     if cursor_enabled {
         render_text_field_cursor(frame, columns[0], state);
     }
-    render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
+    if state.edit_slug.is_some() {
+        frame.render_widget(Paragraph::new("Existing layout is preserved. Changes apply the next time a new session is started.").block(Block::default().borders(Borders::ALL).title(" Layout ").border_style(theme.border())).wrap(Wrap { trim: true }), columns[1]);
+    } else {
+        render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
+    }
     if let Some(picker) = state.new_pane_picker {
-        render_new_pane_picker(frame, area, picker, theme);
+        render_new_pane_picker(frame, area, picker, state, theme);
     }
 }
 
@@ -63,7 +82,7 @@ fn text_field_cursor_row_and_value(state: &CreateProjectState) -> Option<(u16, &
         Field::Name => Some((2, state.name.as_str())),
         Field::Path => Some((3, state.path.as_str())),
         Field::BaseBranch => Some((4, state.base_branch.as_str())),
-        Field::Capabilities => None,
+        Field::Multiplexer | Field::Capabilities => None,
         Field::Layout => None,
     }
 }
@@ -99,31 +118,28 @@ fn render_new_pane_picker(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
     picker: NewPanePickerState,
+    state: &CreateProjectState,
     theme: &UiTheme,
 ) {
     let popup = centered_rect(68, 58, area);
     frame.render_widget(Clear, popup);
     let mut lines = vec![
-        Line::from(Span::styled("New window / preset", theme.help_title())),
+        Line::from(Span::styled("New tab / preset", theme.help_title())),
         Line::from(""),
-        Line::from("Choose a window/tab to add. Enter confirms, Esc closes, j/k moves."),
-        Line::from("Direct keys: Space empty window, e editor, i ide, g git, d docker, r rtui, p pantsui, K k9s, m monitor."),
+
+        Line::from("Only installed tools are listed. Use the key beside a preset."),
         Line::from(""),
     ];
-    for (index, choice) in NEW_PANE_CHOICES.iter().copied().enumerate() {
+    for (index, choice) in state.available_presets().iter().copied().enumerate() {
         let marker = if index == picker.selected { ">" } else { " " };
-        let style = if index == picker.selected {
-            theme.selected()
-        } else {
-            theme.title()
-        };
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("{marker} {:<5} {:<13}", choice.key(), choice.label()),
-                style,
-            ),
-            Span::raw(choice.description().to_string()),
-        ]));
+        let mut line = theme.shortcut_line(&format!(
+            "{marker} {:<7} {:<13} {}",
+            format!("[{}]", choice.key()), choice.label(), choice.description()
+        ));
+        if index == picker.selected {
+            line.style = theme.selected();
+        }
+        lines.push(line);
     }
 
     let block = Block::default()
@@ -163,13 +179,13 @@ fn render_layout_preview(
     cursor_enabled: bool,
 ) {
     let mode = match state.layout_mode {
-        LayoutEditMode::Navigate => "nav",
-        LayoutEditMode::EditCommand => "edit command",
+        LayoutEditMode::Navigate => "select pane",
+        LayoutEditMode::EditCommand => "type command",
     };
     let block = Block::default()
         .borders(Borders::ALL)
         .title(format!(
-            " Live preview: {} ({mode}) ",
+            " Tab: {} • {mode} ",
             state.current_tab().name
         ))
         .border_style(if state.field == Field::Layout {
@@ -222,7 +238,7 @@ fn render_layout_preview(
                 pane.command.clone()
             };
             let title = format!(
-                " r{} {}% / p{} {}% ",
+                " Row {}: {}% height / Pane {}: {}% width ",
                 row_index + 1,
                 row_percentages[row_index],
                 pane_index + 1,
@@ -257,17 +273,7 @@ fn render_layout_preview(
         }
     }
 
-    let footer = Paragraph::new(vec![Line::from(Span::styled(
-        "Ratios are weights; preview normalizes them to Constraint::Percentage.",
-        theme.muted(),
-    ))]);
-    let footer_area = Rect {
-        x: inner.x,
-        y: inner.y + inner.height.saturating_sub(1),
-        width: inner.width,
-        height: 1,
-    };
-    frame.render_widget(footer, footer_area);
+
 }
 
 fn render_ide_preview(

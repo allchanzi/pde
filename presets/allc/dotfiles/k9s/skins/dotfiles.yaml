@@ -43,20 +43,3 @@ k9s:
     table:
       fgColor: "#cdd6f4"
       bgColor: "#1e1e2e"
-      cursorColor: "#45475a"
-      header:
-        fgColor: "#1e1e2e"
-        bgColor: "#89b4fa"
-        sorterColor: "#f9e2af"
-    yaml:
-      keyColor: "#89b4fa"
-      colonColor: "#6c7086"
-      valueColor: "#cdd6f4"
-    logs:
-      fgColor: "#cdd6f4"
-      bgColor: "#1e1e2e"
-      indicator:
-        fgColor: "#89b4fa"
-        bgColor: "#1e1e2e"
-        toggleOnColor: "#a6e3a1"
-        toggleOffColor: "#6c7086"

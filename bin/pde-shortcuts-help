@@ -15,6 +15,7 @@ Most used in tmux and Zellij
   Ctrl-a G         Show all branches for current folder
   Ctrl-a n         Create new branch worktree from default base
   Ctrl-a Tab       Open session switcher / session manager
+  Ctrl-a s         Enter Session mode (Zellij); press w for the manager
   Alt-h/j/k/l      Focus pane left/down/up/right
   Alt-a/s/w/d      Focus pane left/down/up/right
   Alt-1..7         Jump to tab/window by number
@@ -102,6 +103,7 @@ Most used
   Ctrl-a           Enter tmux mode / prefix layer
   Ctrl-a Ctrl-a    Send literal Ctrl-a to the running app
   Ctrl-a Tab       Open floating session manager
+  Ctrl-a s, then w Enter Session mode and open the manager
   Ctrl-a g         Show existing worktrees for current folder
   Ctrl-a G         Show all branches for current folder
   Ctrl-a n         Create new branch worktree from default base
@@ -138,15 +140,16 @@ Tmux mode (Ctrl-a ...)
   x                Close tab
   q                Close pane
   Tab              Open floating session manager
+  s                Enter Session mode; w opens the manager
   d                Detach session
   X / Q            Quit session
-  a / w / s / D    Resize left / up / down / right
+  a / w / D        Resize left / up / right
+  r, then s        Resize down
   p                Enter Pane mode
   t                Enter Tab mode
   r                Enter Resize mode
   m                Enter Move mode
   [                Enter Scroll mode
-  o                Enter Session mode
   g                Show existing worktrees for current folder
   G                Show all branches for current folder
   n                Create new branch worktree from default base

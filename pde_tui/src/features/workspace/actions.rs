@@ -40,16 +40,10 @@ impl WorkspaceState {
             FocusPane::Projects => Effect::OpenCreateProject,
             FocusPane::Workspaces => self
                 .selected_project()
-                .map(|project| {
-                    Effect::Suspend(ExternalCommand::CorePdeWorktree(vec![
-                        "new".into(),
-                        "--project".into(),
-                        project.slug.clone(),
-                    ]))
-                })
+                .map(|project| Effect::OpenWorktree { slug: project.slug.clone(), path: project.path.clone(), base: project.base_branch.clone(), new: true })
                 .unwrap_or(Effect::None),
             FocusPane::GlobalSessions | FocusPane::ProjectSessions => {
-                Effect::Message("Sessions: Enter attaches, d kills selected session".into())
+                Effect::Message("Sessions: [Enter] attach • [d]elete selected session".into())
             }
         }
     }
@@ -58,34 +52,10 @@ impl WorkspaceState {
         match self.focus {
             FocusPane::Projects | FocusPane::Workspaces => self
                 .selected_project()
-                .map(|project| {
-                    Effect::Suspend(ExternalCommand::CorePdeWorktree(vec![
-                        "branches".into(),
-                        "--project".into(),
-                        project.slug.clone(),
-                    ]))
-                })
+                .map(|project| Effect::OpenWorktree { slug: project.slug.clone(), path: project.path.clone(), base: project.base_branch.clone(), new: false })
                 .unwrap_or(Effect::None),
             FocusPane::GlobalSessions | FocusPane::ProjectSessions => Effect::Message(
                 "Branches: switch focus to Projects or Workspaces first".into(),
-            ),
-        }
-    }
-
-    fn existing_action(&self) -> Effect {
-        match self.focus {
-            FocusPane::Projects | FocusPane::Workspaces => self
-                .selected_project()
-                .map(|project| {
-                    Effect::Suspend(ExternalCommand::CorePdeWorktree(vec![
-                        "existing".into(),
-                        "--project".into(),
-                        project.slug.clone(),
-                    ]))
-                })
-                .unwrap_or(Effect::None),
-            FocusPane::GlobalSessions | FocusPane::ProjectSessions => Effect::Message(
-                "Existing worktrees: switch focus to Projects or Workspaces first".into(),
             ),
         }
     }
@@ -127,7 +97,7 @@ impl WorkspaceState {
             FocusPane::Projects => self
                 .selected_project()
                 .map(|project| ExternalCommand::Projects(vec!["open".into(), project.slug.clone()]))
-                .map(Effect::Exec)
+                .map(Effect::Suspend)
                 .unwrap_or(Effect::None),
             FocusPane::Workspaces => self.open_workspace_action(),
             FocusPane::GlobalSessions => self.attach_session_action(SessionPane::Global),
@@ -151,7 +121,7 @@ impl WorkspaceState {
                         }
                     })
             })
-            .map(Effect::Exec)
+            .map(Effect::Suspend)
             .unwrap_or(Effect::None)
     }
 
@@ -171,7 +141,7 @@ impl WorkspaceState {
                     args: vec!["attach".into(), session.session.clone()],
                 },
             })
-            .map(Effect::Exec)
+            .map(Effect::Suspend)
             .unwrap_or_else(|| Effect::Message("No active session selected".into()))
     }
 

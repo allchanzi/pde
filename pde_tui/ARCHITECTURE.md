@@ -52,8 +52,8 @@ The main screen is split into two vertical halves:
 - Right/selected half:
   - `Workspaces`: ways to open the selected project — main workspace and git worktrees. `Enter` opens, `a` starts the new-worktree flow, `d` deletes selected worktree.
   - `Project runners`: active tmux/zellij sessions for the selected project/worktrees. `Enter` attaches.
-- Footer shows baseline shortcuts. `?` opens a contextual help popup for the active panel.
-- `Tab` cycles focus between panels. `Alt+h/j/k/l` or `Alt+a/s/w/d` moves focus by direction. `j/k` or arrows scroll the focused panel.
+- Footer shows status and shortcuts for the active panel on separate visible lines. `?` opens a contextual help popup for the active panel.
+- `Tab` / `Shift+Tab` cycles focus forward / backward between panels. `Home` / `End` jumps to the first / last item; `PageUp` / `PageDown` pages through the list. `Alt+h/j/k/l` or `Alt+a/s/w/d` moves focus by direction. `j/k` or arrows scroll the focused panel.
 
 ## Adding a new feature
 

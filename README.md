@@ -54,6 +54,7 @@ After that, register projects in the shared registry and open them from the TUI 
 ```bash
 projects register my-project ~/projects/my-project
 projects register my-project ~/projects/my-project --rtui --pantsui
+projects register other-project ~/projects/other-project --multiplexer zellij
 projects
 ```
 
@@ -62,6 +63,8 @@ projects
 ## Overview
 
 The repo is split into the PDE app and install presets. On Linux, the root installer first installs missing distribution packages and Rust. It then builds the Rust TUI, installs the companion `rtui` and `pantsui` tools, links CLI wrappers, creates `~/.config/pde`, and runs the selected preset. The default preset writes minimal config and uses the tmux installed by the bootstrap when no multiplexer was already present. The `presets/allc` preset is the tracked opinionated setup with dotfiles, terminal configs, themes, shortcuts, Homebrew packages, and Neovim setup.
+
+The create-project form offers installed `tmux`/`zellij` backends and saves the choice per project. Older projects use the global multiplexer preference. Tool presets are filtered by installed commands; missing `rtui`/`pantsui` capabilities are disabled.
 
 Machine-local choices live in `~/.config/pde/prefs` and optional local override files under `~/.config/tmux/` or `~/.config/zellij/layouts/`.
 
@@ -675,9 +678,10 @@ Layouts: `zellij/layouts/*.kdl`
 | `Ctrl-a d` | Detach session |
 | `Ctrl-a X` | Quit the whole Zellij session |
 | `Ctrl-a Q` | Quit the whole Zellij session |
-| `Ctrl-a a/w/s/D` | Resize pane (left/up/down/right) |
+| `Ctrl-a a/w/D` | Resize pane (left/up/right) |
+| `Ctrl-a r`, then `s` | Resize pane down |
 | `Ctrl-a p / t / r / m / [` | Enter pane / tab / resize / move / scroll mode |
-| `Ctrl-a o` | Enter session mode |
+| `Ctrl-a s` | Enter session mode; `w` opens the session manager |
 | `Ctrl-a h` | Open floating full PDE shortcuts help |
 | `Ctrl-a z / f / n` | Fullscreen / toggle pane frames / floating panes |
 | `Ctrl-a M` | Open floating process analysis pane |
@@ -694,7 +698,7 @@ Zellij panes in these layouts are configured in a tmux-like style:
 - close a pane you no longer want with `Ctrl-a q`
 - for machine-local overrides, `pde` prefers `~/.config/zellij/layouts/pde.local.kdl` if it exists
 - `setup` writes `~/.config/zellij/layouts/pde.local.kdl` from the selected AI profile in `~/.config/pde/prefs`
-- `Ctrl-a` now behaves more like a top-level command palette: the status bar shows tmux-mode options in a taller two-line footer, and `Ctrl-a ?` opens the built-in floating session manager
+- `Ctrl-a` now behaves more like a top-level command palette: the status bar shows tmux-mode options in a taller two-line footer. `Ctrl-a Tab` or `Ctrl-a ?` opens the floating session manager directly. `Ctrl-a s` enters Session mode, where `w` opens the manager.
 
 To switch back to native Zellij command panes:
 
@@ -1111,3 +1115,22 @@ pde shortcuts-help all
 pde shortcuts-help tmux
 pde shortcuts-help zellij
 ```
+
+### Editing project registrations
+
+Press `e` in the Projects or Workspaces panel to edit the selected project's
+name, directory, base branch, multiplexer and capabilities. Confirm saving with
+`y`, or return to editing with `n`. The project slug, launcher, commands and
+existing layout are preserved; active sessions keep their current configuration.
+The directory must already exist. CLI example:
+
+```bash
+projects edit my-project --name "My project" --multiplexer zellij
+```
+
+Worktree creation from the Workspaces panel (`a`) stays inside the TUI: select
+an existing source branch, enter a new branch name, then confirm with `y`/`n`.
+The branch picker (`b`) also uses a native popup. Both support arrow keys and
+`j`/`k`; `Esc` cancels or returns to the previous step. Invalid or already used
+branch names are reported inside the popup. Git refs are read locally, without
+fetching remotes. The terminal switches only when opening the resulting session.
