@@ -1,4 +1,12 @@
 impl WorkspaceState {
+    pub fn shortcuts(&self) -> &'static str {
+        match self.focus {
+            FocusPane::Projects => "[Enter] open • [e]dit • [a]dd • [b]ranch • [d]elete",
+            FocusPane::Workspaces => "[Enter] open • [e]dit • [a]dd • [b]ranch • [d]elete",
+            FocusPane::GlobalSessions | FocusPane::ProjectSessions => "[Enter] attach • [d]elete session",
+        }
+    }
+
     fn selected_project(&self) -> Option<&Project> {
         self.project_list
             .selected()

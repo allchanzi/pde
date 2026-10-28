@@ -36,6 +36,7 @@ PROJECTS_HELP = """Usage:
   projects
   projects open <project> [-b <branch>] [--from <base-branch>] [-f]
   projects list
+  projects edit <project> [--name NAME] [--path PATH] [--multiplexer tmux|zellij]
   projects register [name] [path]
   projects delete <project> [--yes] [--keep-launcher]
   projects info <project>
@@ -72,6 +73,7 @@ class Project:
     launcher_type: str | None = None
     base_branch: str | None = None
     layout_variant: str | None = None
+    multiplexer: str | None = None
     tags: list[str] = field(default_factory=list)
     capabilities: list[str] = field(default_factory=list)
     commands: dict[str, str] = field(default_factory=dict)
@@ -99,6 +101,8 @@ class Project:
             data["launcher_type"] = self.launcher_type
         if self.base_branch:
             data["base_branch"] = self.base_branch
+        if self.multiplexer:
+            data["multiplexer"] = self.multiplexer
         if self.layout_variant:
             data["layout_variant"] = self.layout_variant
         return data
@@ -136,6 +140,7 @@ class Project:
             launcher=str(data.get("launcher", "")).strip() or None,
             launcher_type=str(data.get("launcher_type", "")).strip() or None,
             base_branch=str(data.get("base_branch", "")).strip() or None,
+            multiplexer=data.get("multiplexer") if data.get("multiplexer") in {"tmux", "zellij"} else None,
             layout_variant=str(data.get("layout_variant", "")).strip() or None,
             tags=[
                 str(item).strip()
@@ -1284,6 +1289,7 @@ def print_project_inspect_json(project: Project) -> None:
                     "path": project.path,
                     "base_branch": project.base_branch,
                     "layout_variant": project.layout_variant,
+                    "multiplexer": project.multiplexer or parse_prefs().multiplexer,
                     "launcher": project.launcher,
                     "capabilities": project.capabilities,
                 },
@@ -1395,14 +1401,16 @@ def prompt_text(prompt: str, default: str | None = None, *, allow_empty: bool = 
         print("Value is required.")
 
 
-def prompt_yes_no(prompt: str, default: bool = True) -> bool:
-    """Prompt user for yes/no."""
+def prompt_yes_no(prompt: str) -> bool:
+    """Require an explicit yes/no answer."""
 
-    suffix = " [Y/n]" if default else " [y/N]"
-    answer = input(f"{prompt}{suffix}: ").strip().lower()
-    if not answer:
-        return default
-    return answer in {"y", "yes"}
+    while True:
+        answer = input(f"{prompt} [y]es / [n]o: ").strip().lower()
+        if answer in {"y", "yes"}:
+            return True
+        if answer in {"n", "no"}:
+            return False
+        print("Please answer [y]es or [n]o.")
 
 
 
@@ -1422,7 +1430,6 @@ def create_launcher_wrapper(
             fail(f"Launcher already exists: {launcher_path}")
         if not prompt_yes_no(
             f"Launcher {launcher_path} exists. Overwrite?",
-            default=False,
         ):
             fail("Launcher creation cancelled.")
     launcher_path.write_text(
@@ -1506,7 +1513,7 @@ def delete_project(
     if not arguments.yes:
         if not sys.stdin.isatty():
             fail("Project deletion requires --yes in non-interactive mode.")
-        if not prompt_yes_no(prompt, default=False):
+        if not prompt_yes_no(prompt):
             fail("Project deletion cancelled.")
 
     save_registry([item for item in projects if item.slug != project.slug])
@@ -1548,7 +1555,6 @@ def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
         not interactive
         or prompt_yes_no(
             f"Create project directory {project_path}?",
-            default=True,
         )
     ):
         project_path.mkdir(parents=True, exist_ok=True)
@@ -1599,13 +1605,14 @@ def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
         path=str(project_path),
         base_branch=base_branch or None,
         layout_variant=layout_variant or None,
+        multiplexer=arguments.multiplexer,
         capabilities=capabilities,
         commands=commands,
     )
 
     create_launcher = arguments.create_launcher
     if not arguments.create_launcher and not arguments.no_launcher and interactive:
-        create_launcher = prompt_yes_no("Create launcher alias in ~/bin?", default=False)
+        create_launcher = prompt_yes_no("Create launcher alias in ~/bin?")
     if create_launcher:
         launcher_name = arguments.launcher_name or (
             prompt_text("Launcher name", project.slug) if interactive else project.slug
@@ -1627,6 +1634,29 @@ def register_project(arguments: argparse.Namespace, script_path: Path) -> None:
     print(f"  file   → {PROJECTS_FILE}")
     if project.launcher:
         print(f"  alias  → {project.launcher}")
+
+
+def edit_project(arguments: argparse.Namespace, projects: list[Project]) -> None:
+    """Update registration while preserving identity, layout and launcher."""
+    project = find_project(projects, arguments.project)
+    if arguments.name is not None:
+        name = arguments.name.strip()
+        if not name or any(item.slug != project.slug and item.name.lower() == name.lower() for item in projects):
+            fail("Project name is empty or already registered.")
+        project.name = name
+    if arguments.path is not None:
+        path = resolve_path(arguments.path)
+        if not path.is_dir():
+            fail(f"Project directory does not exist: {path}")
+        project.path = str(path)
+    if arguments.base_branch is not None:
+        project.base_branch = arguments.base_branch.strip() or None
+    if arguments.multiplexer is not None:
+        project.multiplexer = arguments.multiplexer
+    if arguments.capability is not None:
+        project.capabilities = list(dict.fromkeys(arguments.capability))
+    save_registry(projects)
+    print(f"Updated project '{project.name}'")
 
 
 def open_docs(project: Project) -> None:
@@ -1710,10 +1740,13 @@ def open_project(
 ) -> None:
     """Open project in configured multiplexer."""
 
+    multiplexer = project.multiplexer or runtime.multiplexer
+    if not command_exists(multiplexer):
+        fail(f"Multiplexer '{multiplexer}' is not installed.")
     project_dir, session_name = project_dir_for_code_open(project, branch, from_branch, force)
 
     tabs = project_tabs(project, runtime, script_path)
-    if runtime.multiplexer == "zellij":
+    if multiplexer == "zellij":
         layout_path = custom_zellij_layout(project)
         if layout_path is None:
             layout_path = write_zellij_layout(tabs, session_name)
@@ -1761,6 +1794,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser.add_argument("path", nargs="?")
     register_parser.add_argument("--slug")
     register_parser.add_argument("--base-branch")
+    register_parser.add_argument("--multiplexer", choices=("tmux", "zellij"))
     register_parser.add_argument("--layout-variant", choices=("minimal", "full", "custom"))
     register_parser.add_argument("--capability", action="append", default=[])
     register_parser.add_argument("--rtui", action="store_true")
@@ -1770,6 +1804,16 @@ def build_parser() -> argparse.ArgumentParser:
     register_parser.add_argument("--launcher-name")
     register_parser.add_argument("--no-launcher", action="store_true")
     register_parser.add_argument("-h", "--help", action="store_true")
+
+    edit_parser = subparsers.add_parser("edit", add_help=False)
+    edit_parser.add_argument("project")
+    edit_parser.add_argument("--name")
+    edit_parser.add_argument("--path")
+    edit_parser.add_argument("--base-branch")
+    edit_parser.add_argument("--multiplexer", choices=("tmux", "zellij"))
+    edit_parser.add_argument("--capability", action="append")
+    edit_parser.add_argument("--clear-capabilities", action="store_const", const=[], dest="capability")
+    edit_parser.add_argument("-h", "--help", action="store_true")
 
     delete_parser = subparsers.add_parser(
         "delete",
@@ -1804,6 +1848,7 @@ def command_or_default(arguments: list[str]) -> list[str]:
         "info",
         "run",
         "register",
+        "edit",
         "add",
         "delete",
         "remove",
@@ -1848,6 +1893,8 @@ def main(argv: list[str] | None = None) -> None:
             print_project_info(find_project(projects, namespace.project))
         case "run":
             run_capability(find_project(projects, namespace.project), namespace.capability)
+        case "edit":
+            edit_project(namespace, projects)
         case "register" | "add":
             register_project(namespace, script_path)
         case "delete" | "remove" | "rm" | "unregister":

@@ -19,15 +19,18 @@ enum Field {
     Name,
     Path,
     BaseBranch,
+    Multiplexer,
     Capabilities,
     Layout,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CreateProjectSpec {
+    pub edit_slug: Option<String>,
     pub name: String,
     pub path: String,
     pub base_branch: String,
+    pub multiplexer: String,
     pub capabilities: Vec<String>,
     pub layout: Vec<LayoutTab>,
 }
@@ -106,10 +109,16 @@ const NEW_PANE_CHOICES: [NewPaneChoice; 9] = [
 
 #[derive(Debug)]
 pub struct CreateProjectState {
+    edit_slug: Option<String>,
+    extra_capabilities: Vec<String>,
     field: Field,
     name: String,
     path: String,
     base_branch: String,
+    multiplexers: Vec<String>,
+    selected_multiplexer: usize,
+    available_rtui: bool,
+    available_pantsui: bool,
     enable_rtui: bool,
     enable_pantsui: bool,
     selected_capability: CapabilityChoice,
@@ -165,4 +174,79 @@ fn default_capabilities_enabled() -> bool {
     }
 
     false
+}
+
+fn command_available(command: &str) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    env::var_os("PATH").is_some_and(|paths| {
+        env::split_paths(&paths).any(|dir| {
+            fs::metadata(dir.join(command))
+                .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+        })
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn multiplexer_choice_is_submitted_and_required() {
+        let mut state = CreateProjectState::new();
+        state.name = "Example".into();
+        state.multiplexers = vec!["tmux".into(), "zellij".into()];
+        state.field = Field::Multiplexer;
+        state
+            .handle_key(KeyEvent::new(
+                KeyCode::Right,
+                crossterm::event::KeyModifiers::NONE,
+            ))
+            .unwrap();
+        let Effect::CreateProjectSubmit(spec) = state.submit() else {
+            panic!("expected submit")
+        };
+        assert_eq!(spec.multiplexer, "zellij");
+        state.multiplexers.clear();
+        assert!(matches!(state.request_confirmation(), Effect::Message(_)));
+        assert_eq!(state.confirm, ConfirmState::Editing);
+    }
+
+    #[test]
+    fn editing_reviews_without_replacing_layout_and_preserves_other_capabilities() {
+        let mut state = CreateProjectState::new();
+        state.edit_slug = Some("original-slug".into());
+        state.name = "Renamed".into();
+        state.multiplexers = vec!["tmux".into()];
+        state.extra_capabilities = vec!["requests".into()];
+        state.field = Field::Capabilities;
+        state.next_field();
+        assert_eq!(state.confirm, ConfirmState::ConfirmCreate);
+        assert_eq!(state.field, Field::Capabilities);
+        state.handle_confirm_key(KeyCode::Char('n'));
+        assert_eq!(state.confirm, ConfirmState::Editing);
+        let Effect::CreateProjectSubmit(spec) = state.handle_confirm_key(KeyCode::Char('y')) else {
+            panic!("expected submission")
+        };
+        assert_eq!(spec.edit_slug.as_deref(), Some("original-slug"));
+        assert!(spec.capabilities.contains(&"requests".to_string()));
+    }
+
+    #[test]
+    fn missing_capabilities_cannot_be_enabled_or_added_by_shortcut() {
+        let mut state = CreateProjectState::new();
+        state.available_rtui = false;
+        state.available_pantsui = false;
+        state.enable_rtui = false;
+        state.enable_pantsui = false;
+        state.toggle_capability(CapabilityChoice::Rtui);
+        state.toggle_capability(CapabilityChoice::Pantsui);
+        assert!(state.capabilities().is_empty());
+        let tabs = state.layout.len();
+        assert!(matches!(
+            state.apply_new_pane_choice(NewPaneChoice::RtuiTab),
+            Effect::Message(_)
+        ));
+        assert_eq!(state.layout.len(), tabs);
+        assert!(!state.available_presets().contains(&NewPaneChoice::RtuiTab));
+    }
 }

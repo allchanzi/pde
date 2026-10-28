@@ -115,18 +115,20 @@ macos_casks() {
 install_macos_cask() {
   local cask_name="$1"
   local log_file
+  local app_dir="$HOME/Applications"
 
+  mkdir -p "$app_dir"
   log_file="$(mktemp)"
 
   if brew list --cask "$cask_name" >/dev/null 2>&1; then
     echo "Using $cask_name"
-    if brew upgrade --cask "$cask_name" >"$log_file" 2>&1; then
+    if brew upgrade --cask --appdir="$app_dir" "$cask_name" >"$log_file" 2>&1; then
       rm -f "$log_file"
       return 0
     fi
   else
     echo "Installing $cask_name"
-    if brew install --cask "$cask_name" >"$log_file" 2>&1; then
+    if brew install --cask --appdir="$app_dir" "$cask_name" >"$log_file" 2>&1; then
       rm -f "$log_file"
       return 0
     fi
@@ -135,7 +137,7 @@ install_macos_cask() {
   if [[ "$cask_name" == "kitty" ]] && grep -q "already an App at" "$log_file"; then
     echo "⚠️ Resolving kitty app conflict with forced reinstall..."
     brew uninstall --cask --force kitty >/dev/null 2>&1 || true
-    if brew install --cask kitty; then
+    if brew install --cask --appdir="$app_dir" kitty; then
       rm -f "$log_file"
       return 0
     fi
@@ -326,7 +328,7 @@ verify_allc_binaries
 
 if [[ "$OS" == "Darwin" && -f "$PRESET_DIR/Brewfile.macOS" ]]; then
   echo "🍎 Installing macOS-only packages from Brewfile.macOS..."
-  install_macos_casks
+  install_macos_casks || echo "⚠️ Some optional macOS apps were skipped or need administrator installation."
 
   if [[ -x /usr/libexec/path_helper ]]; then
     eval "$(/usr/libexec/path_helper)"

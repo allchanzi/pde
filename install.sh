@@ -272,13 +272,16 @@ install_cargo_tool() {
   local install_root
   install_root="$(mktemp -d)"
   echo "🦀 Installing latest $name from $repo (branch $branch)..."
-  if CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
+  # cargo warns when the install root's bin directory is not on PATH. The
+  # root is temporary and its binary is copied into BIN_DIR below, so expose
+  # it only while cargo runs to avoid a misleading PATH warning.
+  if PATH="$install_root/bin:$PATH" CARGO_NET_GIT_FETCH_WITH_CLI=true cargo install \
     --git "$repo" \
     --branch "$branch" \
     --root "$install_root" \
     --force; then
     install -m 0755 "$install_root/bin/$name" "$BIN_DIR/$name"
-    echo "✅ Installed $name: $("$BIN_DIR/$name" --version 2>/dev/null || echo unknown-version)"
+    echo "✅ Installed $name to $BIN_DIR/$name"
   else
     echo "⚠️  Failed to install $name from $repo — skipping (build it manually if needed)." >&2
   fi

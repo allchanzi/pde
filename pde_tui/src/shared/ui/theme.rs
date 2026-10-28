@@ -2,6 +2,7 @@ use std::{collections::HashMap, fs, path::Path};
 
 use ratatui::{
     style::{Color, Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders},
 };
 
@@ -20,7 +21,6 @@ pub struct Palette {
     pub pink: Color,
     pub green: Color,
     pub yellow: Color,
-    pub cyan: Color,
     pub red: Color,
 }
 
@@ -54,7 +54,7 @@ impl UiTheme {
 
     pub fn focused_border(&self) -> Style {
         Style::new()
-            .fg(self.palette.cyan)
+            .fg(self.palette.blue)
             .add_modifier(Modifier::BOLD)
     }
 
@@ -64,6 +64,28 @@ impl UiTheme {
 
     pub fn border(&self) -> Style {
         self.inactive_border()
+    }
+
+    pub fn shortcut_line(&self, text: &str) -> Line<'static> {
+        let normal = Style::new().fg(self.palette.text);
+        let mut spans = Vec::new();
+        let mut rest = text;
+        while let Some(start) = rest.find('[') {
+            let Some(end) = rest[start..].find(']') else {
+                break;
+            };
+            let end = start + end + 1;
+            spans.push(Span::styled(rest[..start].to_string(), normal));
+            spans.push(Span::styled(
+                rest[start..end].to_string(),
+                Style::new()
+                    .fg(self.palette.blue)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            rest = &rest[end..];
+        }
+        spans.push(Span::styled(rest.to_string(), normal));
+        Line::from(spans)
     }
 
     pub fn muted(&self) -> Style {
@@ -85,7 +107,7 @@ impl UiTheme {
 
     pub fn help_title(&self) -> Style {
         Style::new()
-            .fg(self.palette.cyan)
+            .fg(self.palette.blue)
             .add_modifier(Modifier::BOLD)
     }
 
@@ -110,7 +132,6 @@ impl Palette {
             pink: Color::Rgb(245, 194, 231),
             green: Color::Rgb(166, 227, 161),
             yellow: Color::Rgb(249, 226, 175),
-            cyan: Color::Rgb(148, 226, 213),
             red: Color::Rgb(243, 139, 168),
         }
     }
@@ -133,7 +154,6 @@ fn parse_palette(raw: &str) -> Palette {
         pink: color_or("PINK", fallback.pink),
         green: color_or("GREEN", fallback.green),
         yellow: color_or("YELLOW", fallback.yellow),
-        cyan: color_or("CYAN", fallback.cyan),
         red: color_or("RED", fallback.red),
     }
 }

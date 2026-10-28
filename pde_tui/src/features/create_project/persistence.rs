@@ -1,4 +1,15 @@
 pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
+    if let Some(slug) = &spec.edit_slug {
+        let mut args = vec!["edit".to_string(), slug.clone(), "--name".into(), spec.name.clone(), "--path".into(), spec.path.clone(), "--base-branch".into(), spec.base_branch.clone(), "--multiplexer".into(), spec.multiplexer.clone(), "--clear-capabilities".into()];
+        for capability in &spec.capabilities {
+            args.extend(["--capability".into(), capability.clone()]);
+        }
+        let output = Command::new(root.join("bin/core/pde/projects")).args(args).output()?;
+        if !output.status.success() {
+            bail!("Cannot save project: {}", String::from_utf8_lossy(&output.stderr));
+        }
+        return Ok(slug.clone());
+    }
     let slug = slugify(&spec.name);
     let mut args = vec![
         "register".into(),
@@ -8,6 +19,8 @@ pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
         slug.clone(),
         "--base-branch".into(),
         spec.base_branch.clone(),
+        "--multiplexer".into(),
+        spec.multiplexer.clone(),
         "--layout-variant".into(),
         "custom".into(),
     ];
@@ -317,4 +330,31 @@ fn home() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+impl CreateProjectState {
+    pub fn title(&self) -> &'static str {
+        if self.edit_slug.is_some() { "Edit project" } else { "Create project" }
+    }
+
+    pub fn edit(root: &Path, slug: &str) -> Result<Self> {
+        let output = Command::new(root.join("bin/core/pde/projects")).args(["inspect", slug]).output()?;
+        if !output.status.success() { bail!("Cannot load project: {}", String::from_utf8_lossy(&output.stderr)); }
+        let value: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+        let project = &value["project"];
+        let mut state = Self::new();
+        state.edit_slug = Some(slug.into());
+        state.name = project["name"].as_str().unwrap_or_default().into();
+        state.path = project["path"].as_str().unwrap_or_default().into();
+        state.base_branch = project["base_branch"].as_str().unwrap_or("main").into();
+        if let Some(mux) = project["multiplexer"].as_str() {
+            if !state.multiplexers.iter().any(|item| item == mux) { state.multiplexers.push(mux.into()); }
+            state.selected_multiplexer = state.multiplexers.iter().position(|item| item == mux).unwrap_or(0);
+        }
+        let capabilities = project["capabilities"].as_array().cloned().unwrap_or_default();
+        state.enable_rtui = capabilities.iter().any(|item| item.as_str() == Some("rtui"));
+        state.enable_pantsui = capabilities.iter().any(|item| item.as_str() == Some("pantsui"));
+        state.extra_capabilities = capabilities.iter().filter_map(|item| item.as_str()).filter(|item| !matches!(*item, "rtui" | "pantsui")).map(str::to_string).collect();
+        Ok(state)
+    }
 }

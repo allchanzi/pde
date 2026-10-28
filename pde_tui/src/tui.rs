@@ -19,7 +19,7 @@ use ratatui::{
 
 use crate::{
     app::{App, Effect, Mode},
-    features::{create_project, workspace},
+    features::{create_project, workspace, worktree},
     shared::process,
 };
 
@@ -53,11 +53,12 @@ fn event_loop(terminal: &mut AppTerminal, mut app: App) -> Result<()> {
         if let Some(effect) = next_effect(&mut app)? {
             match effect {
                 Effect::Quit => return Ok(()),
-                Effect::Exec(command) => return process::exec(app.root(), &command),
                 Effect::Suspend(command) => run_suspended(terminal, &mut app, &command)?,
                 Effect::None
                 | Effect::Message(_)
                 | Effect::ToggleHelp
+                | Effect::OpenWorktree { .. }
+                | Effect::OpenEditProject(_)
                 | Effect::OpenCreateProject
                 | Effect::CloseCreateProject
                 | Effect::CreateProjectSubmit(_) => {}
@@ -96,17 +97,29 @@ fn next_effect(app: &mut App) -> Result<Option<Effect>> {
 }
 
 fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
+    if let Mode::CreateProject(state) = &app.mode {
+        let area = centered_rect(94, 94, frame.area());
+        create_project::render(frame, area, state, &app.theme, !app.show_help, &app.message);
+        if app.show_help {
+            render_help_popup(frame, app);
+        }
+        return;
+    }
+
+    if let Mode::Worktree(state) = &mut app.mode {
+        let area = centered_rect(80, 80, frame.area());
+        worktree::render(frame, area, state, &app.theme, !app.show_help);
+        if app.show_help {
+            render_help_popup(frame, app);
+        }
+        return;
+    }
     let [main, footer] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(4)])
+        .constraints([Constraint::Min(3), Constraint::Length(5)])
         .areas(frame.area());
 
     workspace::render(frame, main, &mut app.workspace, &app.theme);
-
-    if let Mode::CreateProject(state) = &app.mode {
-        let area = centered_rect(74, 70, frame.area());
-        create_project::render(frame, area, state, &app.theme, !app.show_help);
-    }
 
     let footer_block = Block::default()
         .borders(Borders::ALL)
@@ -143,14 +156,15 @@ fn footer_lines(app: &App) -> Vec<Line<'static>> {
         return vec![Line::from(message.to_string())];
     }
 
-    let shortcuts = workspace::WorkspaceState::help().to_string();
-    if message.is_empty() || message == shortcuts {
-        return vec![Line::from(shortcuts)];
-    }
+    let status = if message.is_empty() || message == workspace::WorkspaceState::help() {
+        "[Tab/Shift+Tab] panes • [↑/↓] select • [?] help • [q]uit"
+    } else {
+        message
+    };
 
     vec![
-        Line::from(message.to_string()),
-        Line::from(Span::styled(shortcuts, app.theme.muted())),
+        app.theme.shortcut_line(status),
+        app.theme.shortcut_line(app.workspace.shortcuts()),
     ]
 }
 
@@ -162,11 +176,12 @@ fn render_help_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
     let area = centered_rect(62, 62, frame.area());
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Help (?) ")
+        .title(" [?] Help ")
         .border_style(app.theme.help_title());
     let lines = match &app.mode {
         Mode::Workspace => app.workspace.active_help_lines(&app.theme),
         Mode::CreateProject(state) => state.active_help_lines(&app.theme),
+        Mode::Worktree(state) => state.help(&app.theme),
     };
     let help = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
 

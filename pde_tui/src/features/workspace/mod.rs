@@ -14,7 +14,7 @@ use crate::{
     shared::{process::ExternalCommand, root::home_dir, selection, ui::theme::UiTheme},
 };
 
-const HELP: &str = "? help • h/j/k/l focus+scroll • gg/G top/bottom • Ctrl+d/u page • o/Enter open/attach • a add • b branch worktree • e existing worktree • d delete/kill session • r refresh • u update • q quit";
+const HELP: &str = "[?] help • [j/k] select • [h/l] focus • [gg/G] first/last • [[/]] or [Ctrl+u/d] page up/down • [o/Enter] open or attach • [a]dd • [b]ranch • [e]dit • [d]elete • [r]efresh • [u]pdate • [q]uit";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FocusPane {

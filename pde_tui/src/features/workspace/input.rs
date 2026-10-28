@@ -21,6 +21,16 @@ impl WorkspaceState {
             KeyCode::Char('?') => Effect::ToggleHelp,
             KeyCode::Char('q') | KeyCode::Esc => Effect::Quit,
             KeyCode::Tab => self.cycle_focus(),
+            KeyCode::BackTab => {
+                self.focus = self.focus.next().next().next();
+                Effect::Message(format!("Focus: {}", self.focus_title()))
+            }
+            KeyCode::Home => self.move_first()?,
+            KeyCode::End => self.move_last()?,
+            KeyCode::PageDown => self.page_down()?,
+            KeyCode::PageUp => self.page_up()?,
+            KeyCode::Char(']') => self.page_down()?,
+            KeyCode::Char('[') => self.page_up()?,
             KeyCode::Char('r') => self.refresh_all()?,
             KeyCode::Char('u') => self.update_action(),
             KeyCode::Char('h') | KeyCode::Left => self.move_focus_left(),
@@ -32,9 +42,9 @@ impl WorkspaceState {
                 Effect::None
             }
             KeyCode::Char('G') => self.move_last()?,
+            KeyCode::Char('e') if matches!(self.focus, FocusPane::Projects | FocusPane::Workspaces) => self.selected_project().map(|project| Effect::OpenEditProject(project.slug.clone())).unwrap_or(Effect::None),
             KeyCode::Char('a') => self.add_action(),
             KeyCode::Char('b') => self.branches_action(),
-            KeyCode::Char('e') => self.existing_action(),
             KeyCode::Char('d') => self.delete_action(),
             KeyCode::Char('o') | KeyCode::Enter => self.open_action(),
             _ => Effect::None,

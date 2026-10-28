@@ -6,7 +6,8 @@
 # --------------------------------------------
 # GUI tools
 # --------------------------------------------
-cask "alacritty"
+# Homebrew disabled this cask after its Gatekeeper check failed (2026-09-01).
+# Install Alacritty manually if you still want to use its PDE config.
 cask "kitty"
 cask "ghostty"
 cask "skim"
