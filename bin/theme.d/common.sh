@@ -146,7 +146,7 @@ pick_theme() {
   done < <(list_themes)
 
   local selected
-  selected=$(printf '%s\n' "${themes[@]}" | fzf --prompt="  Theme: " --pointer="▶" --highlight-line --no-info --height=~10 --border=rounded --border-label=" Themes ")
+  selected=$(printf '%s\n' "${themes[@]}" | fzf --prompt="  Theme: " --pointer="▶" --no-info --height=~10 --border=rounded --border-label=" Themes ")
 
   [[ -z "$selected" ]] && exit 0
   load_theme "$selected"
