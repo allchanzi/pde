@@ -17,7 +17,6 @@ impl CreateProjectState {
             Field::Path => Field::BaseBranch,
             Field::BaseBranch => Field::Multiplexer,
             Field::Multiplexer => Field::Capabilities,
-            Field::Capabilities if self.edit_slug.is_some() => return self.request_confirmation(),
             Field::Capabilities => Field::Layout,
             Field::Layout => return self.request_confirmation(),
         };

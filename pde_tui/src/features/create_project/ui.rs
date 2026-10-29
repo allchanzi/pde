@@ -37,11 +37,7 @@ pub fn render(
     if cursor_enabled {
         render_text_field_cursor(frame, columns[0], state);
     }
-    if state.edit_slug.is_some() {
-        frame.render_widget(Paragraph::new("Existing layout is preserved. Changes apply the next time a new session is started.").block(Block::default().borders(Borders::ALL).title(" Layout ").border_style(theme.border())).wrap(Wrap { trim: true }), columns[1]);
-    } else {
-        render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
-    }
+    render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
     if let Some(picker) = state.new_pane_picker {
         render_new_pane_picker(frame, area, picker, state, theme);
     }

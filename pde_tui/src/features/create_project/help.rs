@@ -27,7 +27,7 @@ impl CreateProjectState {
             capability_line(self, theme),
             field_line(
                 "Layout",
-                if self.edit_slug.is_some() { "preserved" } else { "tabs and terminal panes" },
+                "tabs and terminal panes",
                 self.field == Field::Layout,
                 theme,
             ),
@@ -80,11 +80,11 @@ impl CreateProjectState {
         if self.edit_slug.is_some() {
             return vec![
                 Line::from(Span::styled("Edit project shortcuts", theme.help_title())),
-                theme.shortcut_line("[Enter/Tab] next field; review from Capabilities"),
+                theme.shortcut_line("[Enter/Tab] next field; review from Layout"),
                 theme.shortcut_line("[Shift+Tab] previous field • [Esc] cancel • [?] help"),
                 theme.shortcut_line("[←/→] / [Space] choose multiplexer"),
                 theme.shortcut_line("[Space] toggle capability • [h/l] select • [r]tui / [p]antsui"),
-                theme.shortcut_line("The existing layout and project slug are preserved."),
+                theme.shortcut_line("Layout changes apply when you start a new session."),
             ];
         }
         vec![
