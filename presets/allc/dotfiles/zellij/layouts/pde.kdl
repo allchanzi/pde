@@ -10,41 +10,37 @@ layout {
     }
 
     tab name="terminal" focus=true {
-        pane
+        pane size="100%"
     }
-    tab name="editor" {
-        pane command="zsh" {
-            args "-lc" "nvim .; exec \"$SHELL\" -l"
+    tab name="ide" {
+        pane split_direction="vertical" {
+            pane command="zsh" size="65%" {
+                args "-lc" "${EDITOR:-nvim} .; exec \"$SHELL\" -l"
+            }
+            pane split_direction="horizontal" size="35%" {
+                pane command="zsh" size="60%" {
+                    args "-lc" "eval \"${AI_COMMAND_1:-codex}\"; exec \"$SHELL\" -l"
+                }
+                pane size="40%"
+            }
         }
     }
-    tab name="ai" {
+    tab name="ide" {
         pane split_direction="vertical" {
-            pane command="zsh" {
-                args "-lc" "codex; exec \"$SHELL\" -l"
+            pane command="zsh" size="65%" {
+                args "-lc" "${EDITOR:-nvim} .; exec \"$SHELL\" -l"
             }
-            pane command="zsh" {
-                args "-lc" "claude; exec \"$SHELL\" -l"
+            pane split_direction="horizontal" size="35%" {
+                pane command="zsh" size="60%" {
+                    args "-lc" "eval \"${AI_COMMAND_1:-codex}\"; exec \"$SHELL\" -l"
+                }
+                pane size="40%"
             }
         }
     }
     tab name="git" {
-        pane command="zsh" {
+        pane command="zsh" size="100%" {
             args "-lc" "lazygit; exec \"$SHELL\" -l"
-        }
-    }
-    tab name="k9s" {
-        pane command="zsh" {
-            args "-lc" "k9s; exec \"$SHELL\" -l"
-        }
-    }
-    tab name="monitor" {
-        pane split_direction="horizontal" {
-            pane command="zsh" {
-                args "-lc" "if command -v network-ports >/dev/null 2>&1; then network-ports; else bash -lc 'while true; do clear; lsof -nP -iTCP; sleep 2; done'; fi; exec \"$SHELL\" -l"
-            }
-            pane command="zsh" {
-                args "-lc" "btop -p 1; exec \"$SHELL\" -l"
-            }
         }
     }
 }
