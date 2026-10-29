@@ -8,6 +8,9 @@ pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
         if !output.status.success() {
             bail!("Cannot save project: {}", String::from_utf8_lossy(&output.stderr));
         }
+        if spec.layout != default_layout() {
+            write_custom_layouts(slug, &spec.layout)?;
+        }
         return Ok(slug.clone());
     }
     let slug = slugify(&spec.name);
@@ -40,6 +43,17 @@ pub fn create_project(root: &Path, spec: &CreateProjectSpec) -> Result<String> {
     }
     write_custom_layouts(&slug, &spec.layout)?;
     Ok(slug)
+}
+
+fn default_layout() -> Vec<LayoutTab> {
+    vec![LayoutTab {
+        name: "terminal".into(),
+        rows: vec![LayoutRow {
+            ratio: 1,
+            panes: vec![LayoutPane { ratio: 1, command: String::new() }],
+        }],
+        preset: None,
+    }]
 }
 
 fn field_line(label: &'static str, value: &str, active: bool, theme: &UiTheme) -> Line<'static> {

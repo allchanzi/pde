@@ -113,7 +113,7 @@ impl App {
                 match CreateProjectState::edit(self.root(), &slug) {
                     Ok(state) => {
                         self.mode = Mode::CreateProject(state);
-                        self.message = "Edit project details. Existing layout is preserved.".into();
+                        self.message = "Edit project details and layout.".into();
                     }
                     Err(error) => self.message = error.to_string(),
                 }
