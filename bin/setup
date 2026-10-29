@@ -45,7 +45,6 @@ pick_fzf() {
   printf '%s\n' "${items[@]}" | fzf \
     --prompt="  $prompt: " \
     --pointer="▶" \
-    --highlight-line \
     --no-info \
     --height=~10 \
     --border=rounded
@@ -60,7 +59,6 @@ pick_multi_fzf() {
     --prompt="  $prompt: " \
     --pointer="▶" \
     --marker="✓" \
-    --highlight-line \
     --no-info \
     --height=~12 \
     --border=rounded

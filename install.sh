@@ -4,6 +4,7 @@ set -euo pipefail
 CONFIG_DIR="$(cd "$(dirname "$0")" && pwd)"
 PRESET="${PDE_PRESET:-default}"
 BIN_DIR="${PDE_BIN_DIR:-$HOME/bin}"
+export PATH="$BIN_DIR:$PATH"
 BOOTSTRAP="${PDE_BOOTSTRAP:-1}"
 INSTALL_COMPANIONS="${PDE_INSTALL_COMPANIONS:-1}"
 PRESET_ARGS=()
@@ -116,6 +117,68 @@ linux_bootstrap_needed() {
   return 1
 }
 
+version_at_least() {
+  local have="$1" need="$2" index have_part need_part
+  local -a have_parts need_parts
+  IFS=. read -r -a have_parts <<< "$have"
+  IFS=. read -r -a need_parts <<< "$need"
+  for index in 0 1 2; do
+    have_part="${have_parts[$index]:-0}"
+    need_part="${need_parts[$index]:-0}"
+    [[ "$have_part" =~ ^[0-9]+$ && "$need_part" =~ ^[0-9]+$ ]] || return 1
+    (( 10#$have_part > 10#$need_part )) && return 0
+    (( 10#$have_part < 10#$need_part )) && return 1
+  done
+  return 0
+}
+
+install_fzf_latest() {
+  local current_version="" latest_version asset arch tmpdir
+  if command -v fzf >/dev/null 2>&1; then
+    current_version="$(fzf --version 2>/dev/null | awk 'NR == 1 { print $1 }')"
+  fi
+
+  tmpdir="$(mktemp -d)"
+  if ! curl -fsSL -H 'Accept: application/vnd.github+json' \
+      https://api.github.com/repos/junegunn/fzf/releases/latest -o "$tmpdir/release.json"; then
+    rm -rf "$tmpdir"
+    echo "❌ Could not check the latest stable fzf release." >&2
+    return 1
+  fi
+  latest_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag_name"].lstrip("v"))' "$tmpdir/release.json")"
+  if [[ ! "$latest_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    rm -rf "$tmpdir"
+    echo "❌ GitHub returned an invalid fzf release version: $latest_version" >&2
+    return 1
+  fi
+  if [[ -n "$current_version" ]] && version_at_least "$current_version" "$latest_version"; then
+    rm -rf "$tmpdir"
+    return 0
+  fi
+
+  case "$(uname -m)" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *)
+      rm -rf "$tmpdir"
+      echo "❌ Cannot install the latest fzf automatically on architecture: $(uname -m)" >&2
+      return 1
+      ;;
+  esac
+
+  asset="fzf-${latest_version}-linux_${arch}.tar.gz"
+  echo "📦 Installing fzf $latest_version into $BIN_DIR..."
+  if ! curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${latest_version}/$asset" -o "$tmpdir/$asset" \
+    || ! tar -xzf "$tmpdir/$asset" -C "$tmpdir" fzf; then
+    rm -rf "$tmpdir"
+    echo "❌ Failed to download or unpack fzf $latest_version." >&2
+    return 1
+  fi
+  mkdir -p "$BIN_DIR"
+  install -m 0755 "$tmpdir/fzf" "$BIN_DIR/fzf"
+  rm -rf "$tmpdir"
+}
+
 bootstrap_linux() {
   if [[ "$PRESET" == "allc" && -f /etc/alpine-release ]]; then
     echo "❌ The allc preset requires a glibc Linux distribution; Alpine/musl is not supported." >&2
@@ -125,6 +188,7 @@ bootstrap_linux() {
 
   if ! linux_bootstrap_needed; then
     echo "✅ Linux system prerequisites already available"
+    install_fzf_latest
     return 0
   fi
 
@@ -179,6 +243,8 @@ Then re-run: ./install.sh --no-bootstrap
 MSG
     exit 1
   fi
+
+  install_fzf_latest
 }
 
 ensure_rust() {
