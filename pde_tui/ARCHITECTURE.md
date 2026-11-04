@@ -73,3 +73,17 @@ The create-project flow supports `minimal`, `full`, and `custom` code layouts.
 
 Pane commands are entered as `|`-separated values. Blank panes open an interactive shell.
 The legacy core already prefers these custom files when opening a project.
+
+## Navigation and details
+
+Forms accept text directly; Enter opens, advances or confirms. There are no
+Normal/Insert modes or literal-next routing. Workspace a adds and e edits.
+Workspace g/G selects first/last; Ctrl+d/u moves half the visible list and
+Ctrl+f/b moves a full visible list, accounting for multi-line items.
+
+App owns the details overlay state from shared/ui/details.rs. Workspace owns
+its data; tui.rs renders its five tabs (project, workspaces, global sessions,
+project sessions, status). v opens it; 1–5 or h/l selects tabs; j/k scrolls;
+g/G jumps to the top/bottom, clamped to actual content and viewport size.
+Esc/v closes it, Tab/Shift+Tab closes it and changes workspace focus.
+? shows the overlay's contextual help. Existing UiTheme styles are reused.

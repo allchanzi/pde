@@ -1,6 +1,7 @@
 mod app;
 mod cli;
 mod features;
+mod leader;
 mod shared;
 mod tui;
 

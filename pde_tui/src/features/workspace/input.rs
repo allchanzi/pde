@@ -20,6 +20,15 @@ impl WorkspaceState {
         Ok(match key.code {
             KeyCode::Char('?') => Effect::ToggleHelp,
             KeyCode::Char('q') | KeyCode::Esc => Effect::Quit,
+            KeyCode::Char(c @ '1'..='4') => {
+                self.focus = match c {
+                    '1' => FocusPane::Projects,
+                    '2' => FocusPane::GlobalSessions,
+                    '3' => FocusPane::Workspaces,
+                    _ => FocusPane::ProjectSessions,
+                };
+                Effect::Message(format!("Focus: {}", self.focus_title()))
+            }
             KeyCode::Tab => self.cycle_focus(),
             KeyCode::BackTab => {
                 self.focus = self.focus.next().next().next();
@@ -37,10 +46,7 @@ impl WorkspaceState {
             KeyCode::Char('l') | KeyCode::Right => self.move_focus_right(),
             KeyCode::Down | KeyCode::Char('j') => self.move_down()?,
             KeyCode::Up | KeyCode::Char('k') => self.move_up()?,
-            KeyCode::Char('g') => {
-                self.pending_g = true;
-                Effect::None
-            }
+            KeyCode::Char('g') => self.move_first()?,
             KeyCode::Char('G') => self.move_last()?,
             KeyCode::Char('e') if matches!(self.focus, FocusPane::Projects | FocusPane::Workspaces) => self.selected_project().map(|project| Effect::OpenEditProject(project.slug.clone())).unwrap_or(Effect::None),
             KeyCode::Char('a') => self.add_action(),
@@ -53,8 +59,10 @@ impl WorkspaceState {
 
     fn handle_control_key(&mut self, key: KeyCode) -> Result<Effect> {
         Ok(match key {
-            KeyCode::Char('d') => self.page_down()?,
-            KeyCode::Char('u') => self.page_up()?,
+            KeyCode::Char('d') => self.page_by_size(PageDirection::Down, (self.page_rows / 2).max(1))?,
+            KeyCode::Char('u') => self.page_by_size(PageDirection::Up, (self.page_rows / 2).max(1))?,
+            KeyCode::Char('f') => self.page_down()?,
+            KeyCode::Char('b') => self.page_up()?,
             _ => Effect::None,
         })
     }

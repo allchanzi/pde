@@ -13,6 +13,7 @@ impl WorkspaceState {
             global_session_list: ListState::default(),
             project_session_list: ListState::default(),
             pending_g: false,
+            page_rows: 1,
         };
         selection::select_first_when_present(&mut state.project_list, state.projects.len());
         selection::select_first_when_present(
@@ -35,7 +36,7 @@ impl WorkspaceState {
         let title = format!("{} shortcuts", self.focus_title());
         let pane_lines: Vec<Line<'static>> = match self.focus {
             FocusPane::Projects => vec![
-                theme.shortcut_line("[Enter] / [o]pen selected project"),
+                theme.shortcut_line("[Enter/o] open selected project"),
                 theme.shortcut_line("[e]dit project details"),
                 theme.shortcut_line("[a]dd/register project"),
                 theme.shortcut_line("[b]ranch picker: open branch in worktree"),
@@ -46,7 +47,7 @@ impl WorkspaceState {
                 theme.shortcut_line("[d]elete/kill selected session"),
             ],
             FocusPane::Workspaces => vec![
-                theme.shortcut_line("[Enter] / [o]pen selected workspace/worktree"),
+                theme.shortcut_line("[Enter/o] open selected workspace/worktree"),
                 theme.shortcut_line("[e]dit project details"),
                 theme.shortcut_line("[a]dd new worktree"),
                 theme.shortcut_line("[b]ranch picker: open branch in worktree"),
@@ -67,13 +68,14 @@ impl WorkspaceState {
             vec![
                 theme.shortcut_line(""),
                 Line::from(Span::styled("Global shortcuts", theme.title())),
+                theme.shortcut_line("[Space] leader menu (which-key)"),
                 theme.shortcut_line("[?] toggle help"),
                 theme.shortcut_line("[Tab/Shift+Tab] next/previous pane"),
                 theme.shortcut_line("[j/k] / [↓/↑] select next/previous item"),
                 theme.shortcut_line("[h/l] / [Alt+h/l] focus left/right"),
                 theme.shortcut_line("[Alt+j/k] / [Alt+s/w] focus down/up"),
-                theme.shortcut_line("[gg/G] / [Home/End] first/last item"),
-                theme.shortcut_line("[PgDn/PgUp] / [Ctrl+d/u] / []/[] page down/up"),
+                theme.shortcut_line("[g/G] / [Home/End] first/last item"),
+                theme.shortcut_line("[Ctrl+d/u] half page • [Ctrl+f/b] full page"),
                 theme.shortcut_line("[r]efresh"),
                 theme.shortcut_line("[u]pdate PDE, rtui and pantsui"),
                 theme.shortcut_line("[q]uit / [Esc] quit"),

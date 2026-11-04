@@ -4,18 +4,29 @@ pub fn render(
     state: &mut WorkspaceState,
     theme: &UiTheme,
 ) {
-    let [left, right] = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .areas(area);
-    let [projects, global_sessions] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
-        .areas(left);
-    let [workspaces, project_sessions] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(70), Constraint::Percentage(30)])
-        .areas(right);
+    // Two columns when wide; one stacked column (focused card enlarged) when narrow.
+    let focus_index = match state.focus {
+        FocusPane::Projects => 0,
+        FocusPane::GlobalSessions => 1,
+        FocusPane::Workspaces => 2,
+        FocusPane::ProjectSessions => 3,
+    };
+    let [projects, global_sessions, workspaces, project_sessions] =
+        panels::Flow::new([vec![70, 30], vec![70, 30]])
+            .wide_from(100)
+            .layout(area, Some(focus_index))[..]
+    else {
+        return;
+    };
+
+    let focused = match state.focus {
+        FocusPane::Projects => projects,
+        FocusPane::GlobalSessions => global_sessions,
+        FocusPane::Workspaces => workspaces,
+        FocusPane::ProjectSessions => project_sessions,
+    };
+    let item_height = if matches!(state.focus, FocusPane::Projects | FocusPane::Workspaces) { 2 } else { 1 };
+    state.page_rows = (focused.height.saturating_sub(2) as usize / item_height).max(1);
 
     render_projects(frame, projects, state, theme);
     render_global_sessions(frame, global_sessions, state, theme);
@@ -35,7 +46,7 @@ fn render_projects(
         .map(|project| project_item(project, theme))
         .collect::<Vec<_>>();
     let list = List::new(items)
-        .block(theme.panel_block("Global / Projects", state.focus == FocusPane::Projects))
+        .block(theme.panel_block("[1] Global / Projects", state.focus == FocusPane::Projects))
         .highlight_style(theme.selected())
         .highlight_symbol("> ");
     frame.render_stateful_widget(list, area, &mut state.project_list);
@@ -52,6 +63,7 @@ fn render_workspaces(
         .as_ref()
         .map(workspaces_title)
         .unwrap_or_else(|| "Selected / Workspaces".into());
+    let title = format!("[3] {title}");
     let rows = state
         .workspace_rows()
         .iter()
@@ -73,7 +85,7 @@ fn render_global_sessions(
     render_session_panel(
         frame,
         area,
-        "Global / Sessions",
+        "[2] Global / Sessions",
         state.focus == FocusPane::GlobalSessions,
         &state.global_sessions,
         &mut state.global_session_list,
@@ -91,8 +103,8 @@ fn render_project_sessions(
     let title = state
         .detail
         .as_ref()
-        .map(|detail| format!("Selected / Sessions for {}", detail.project.slug))
-        .unwrap_or_else(|| "Selected / Sessions".into());
+        .map(|detail| format!("[4] Selected / Sessions for {}", detail.project.slug))
+        .unwrap_or_else(|| "[4] Selected / Sessions".into());
     render_session_panel(
         frame,
         area,

@@ -717,6 +717,14 @@ Project metadata is stored in:
 
 When creating a new project, the suggested path defaults to `$HOME/projects/<slug>`. Override the base directory by exporting `PDE_PROJECTS_DIR` in your environment, e.g. `export PDE_PROJECTS_DIR="$HOME/Documents/code"`.
 
+In the PDE TUI, use `j/k`, `g/G`, `Ctrl+d/u` (half page), and `Ctrl+f/b`
+(full page) to navigate. `Tab`/`Shift+Tab` or `h/l` changes panel focus.
+`a` adds, `e` edits, and Enter or `o` opens a project or attaches a session.
+Form fields accept text directly. `?` opens contextual help.
+
+`v` shows details: `1–5` or `h/l` selects a card, `j/k` scrolls, `g/G` jumps
+to the top/bottom, and `v` or Esc closes it.
+
 Main commands:
 
 ```bash

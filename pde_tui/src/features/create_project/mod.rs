@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn editing_reviews_without_replacing_layout_and_preserves_other_capabilities() {
+    fn editing_visits_layout_before_review_and_preserves_other_capabilities() {
         let mut state = CreateProjectState::new();
         state.edit_slug = Some("original-slug".into());
         state.name = "Renamed".into();
@@ -220,8 +220,10 @@ mod tests {
         state.extra_capabilities = vec!["requests".into()];
         state.field = Field::Capabilities;
         state.next_field();
+        assert_eq!(state.confirm, ConfirmState::Editing);
+        assert_eq!(state.field, Field::Layout);
+        state.next_field();
         assert_eq!(state.confirm, ConfirmState::ConfirmCreate);
-        assert_eq!(state.field, Field::Capabilities);
         state.handle_confirm_key(KeyCode::Char('n'));
         assert_eq!(state.confirm, ConfirmState::Editing);
         let Effect::CreateProjectSubmit(spec) = state.handle_confirm_key(KeyCode::Char('y')) else {

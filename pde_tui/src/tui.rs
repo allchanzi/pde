@@ -13,7 +13,7 @@ use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
-    text::{Line, Span},
+    text::Line,
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
@@ -116,60 +116,63 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     }
     let [main, footer] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(3), Constraint::Length(5)])
+        .constraints([Constraint::Min(3), Constraint::Length(1)])
         .areas(frame.area());
 
     workspace::render(frame, main, &mut app.workspace, &app.theme);
+    crate::leader::draw_status(frame, footer, app);
+    crate::leader::draw_which_key(frame, app);
 
-    let footer_block = Block::default()
-        .borders(Borders::ALL)
-        .title(format!("Status / shortcuts • theme: {}", app.theme.name));
-    let footer_inner = footer_block.inner(footer);
-    frame.render_widget(footer_block, footer);
-
-    let [footer_content, footer_version] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .areas(footer_inner);
-
-    frame.render_widget(
-        Paragraph::new(footer_lines(app)).wrap(Wrap { trim: true }),
-        footer_content,
-    );
-    frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(
-            tui_version_label(),
-            app.theme.muted(),
-        )))
-        .alignment(ratatui::layout::Alignment::Right),
-        footer_version,
-    );
-
+    if app.details.open {
+        render_details(frame, app, main);
+    }
     if app.show_help {
         render_help_popup(frame, app);
     }
 }
 
-fn footer_lines(app: &App) -> Vec<Line<'static>> {
-    let message = app.message.trim();
-    if matches!(app.mode, Mode::CreateProject(_)) {
-        return vec![Line::from(message.to_string())];
+fn render_details(frame: &mut ratatui::Frame<'_>, app: &mut App, content: ratatui::layout::Rect) {
+    let area = centered_rect(90, 90, content);
+    let block = app.theme.panel_block(" Details [v/Esc] close ", true);
+    let inner = block.inner(area);
+    frame.render_widget(Clear, area);
+    frame.render_widget(block, area);
+    let [tabs, body] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(inner);
+    frame.render_widget(
+        ratatui::widgets::Tabs::new([
+            "1 Project",
+            "2 Workspaces",
+            "3 Global sessions",
+            "4 Project sessions",
+            "5 Status",
+        ])
+        .select(app.details.tab)
+        .highlight_style(app.theme.selected()),
+        tabs,
+    );
+    let mut lines = app.workspace.details(app.details.tab);
+    if app.details.tab == 4 {
+        lines.extend([
+            format!("Theme: {}", app.theme.name),
+            format!("Version: {}", env!("CARGO_PKG_VERSION")),
+            format!("Status: {}", app.message),
+        ]);
     }
-
-    let status = if message.is_empty() || message == workspace::WorkspaceState::help() {
-        "[Tab/Shift+Tab] panes • [↑/↓] select • [?] help • [q]uit"
-    } else {
-        message
-    };
-
-    vec![
-        app.theme.shortcut_line(status),
-        app.theme.shortcut_line(app.workspace.shortcuts()),
-    ]
-}
-
-fn tui_version_label() -> String {
-    format!("v{}", env!("CARGO_PKG_VERSION"))
+    if lines.is_empty() {
+        lines.push("No entries.".into());
+    }
+    app.details_max_scroll = lines.len().saturating_sub(body.height as usize);
+    app.details.scroll = app.details.scroll.min(app.details_max_scroll);
+    frame.render_widget(
+        Paragraph::new(
+            lines
+                .into_iter()
+                .skip(app.details.scroll)
+                .map(Line::from)
+                .collect::<Vec<_>>(),
+        ),
+        body,
+    );
 }
 
 fn render_help_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
@@ -178,10 +181,19 @@ fn render_help_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
         .borders(Borders::ALL)
         .title(" [?] Help ")
         .border_style(app.theme.help_title());
-    let lines = match &app.mode {
-        Mode::Workspace => app.workspace.active_help_lines(&app.theme),
-        Mode::CreateProject(state) => state.active_help_lines(&app.theme),
-        Mode::Worktree(state) => state.help(&app.theme),
+    let lines = if app.details.open {
+        vec![
+            app.theme
+                .shortcut_line("[1–5/h/l] cards • [j/k] scroll • [g/G] top/bottom"),
+            app.theme
+                .shortcut_line("[Esc/v] close • [Tab/Shift+Tab] focus • [?] help"),
+        ]
+    } else {
+        match &app.mode {
+            Mode::Workspace => app.workspace.active_help_lines(&app.theme),
+            Mode::CreateProject(state) => state.active_help_lines(&app.theme),
+            Mode::Worktree(state) => state.help(&app.theme),
+        }
     };
     let help = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
 
@@ -213,4 +225,39 @@ fn centered_rect(
         .areas(vertical);
 
     horizontal
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    fn screen(app: &mut App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| render(frame, app)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
+    #[test]
+    fn details_scroll_reaches_real_bottom_and_clamps_after_resize() {
+        let mut app = App::fixture();
+        app.details.open = true;
+        app.details.tab = 2;
+        let first = screen(&mut app, 100, 25);
+        assert!(first.contains("session-0"));
+        assert!(app.details_max_scroll > 0);
+        app.details
+            .key(crossterm::event::KeyCode::Char('G'), app.details_max_scroll);
+        let last = screen(&mut app, 100, 25);
+        assert!(last.contains("session-59"));
+        screen(&mut app, 100, 100);
+        assert_eq!(app.details.scroll, 0);
+        for (width, height) in [(1, 1), (8, 3), (20, 8)] {
+            screen(&mut app, width, height);
+        }
+    }
 }
