@@ -14,6 +14,8 @@ pub struct UiTheme {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Palette {
+    pub base: Color,
+    pub lavender: Color,
     pub text: Color,
     pub subtle: Color,
     pub surface0: Color,
@@ -125,6 +127,8 @@ impl UiTheme {
 impl Palette {
     fn default_dark() -> Self {
         Self {
+            base: Color::Rgb(30, 30, 46),
+            lavender: Color::Rgb(180, 190, 254),
             text: Color::Rgb(205, 214, 244),
             subtle: Color::Rgb(108, 112, 134),
             surface0: Color::Rgb(49, 50, 68),
@@ -147,6 +151,8 @@ fn parse_palette(raw: &str) -> Palette {
     let color_or = |key: &str, fallback: Color| color(&values, key).unwrap_or(fallback);
 
     Palette {
+        base: color_or("BASE", fallback.base),
+        lavender: color_or("LAVENDER", fallback.lavender),
         text: color_or("TEXT", fallback.text),
         subtle: color_or("SUBTLE", fallback.subtle),
         surface0: color_or("SURFACE0", fallback.surface0),

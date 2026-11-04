@@ -100,16 +100,19 @@ impl WorkspaceState {
     }
 
     fn page_by(&mut self, direction: PageDirection) -> Result<Effect> {
-        const PAGE_SIZE: usize = 8;
+        self.page_by_size(direction, self.page_rows)
+    }
+
+    fn page_by_size(&mut self, direction: PageDirection, page_size: usize) -> Result<Effect> {
         match self.focus {
             FocusPane::Projects => {
                 let before = self.project_list.selected();
                 match direction {
                     PageDirection::Down => {
-                        selection::page_down(&mut self.project_list, self.projects.len(), PAGE_SIZE)
+                        selection::page_down(&mut self.project_list, self.projects.len(), page_size)
                     }
                     PageDirection::Up => {
-                        selection::page_up(&mut self.project_list, self.projects.len(), PAGE_SIZE)
+                        selection::page_up(&mut self.project_list, self.projects.len(), page_size)
                     }
                 }
                 if self.project_list.selected() != before {
@@ -120,22 +123,22 @@ impl WorkspaceState {
                 PageDirection::Down => selection::page_down(
                     &mut self.global_session_list,
                     self.global_sessions.len(),
-                    PAGE_SIZE,
+                    page_size,
                 ),
                 PageDirection::Up => selection::page_up(
                     &mut self.global_session_list,
                     self.global_sessions.len(),
-                    PAGE_SIZE,
+                    page_size,
                 ),
             },
             FocusPane::Workspaces => {
                 let workspace_len = self.workspace_rows().len();
                 match direction {
                     PageDirection::Down => {
-                        selection::page_down(&mut self.workspace_list, workspace_len, PAGE_SIZE)
+                        selection::page_down(&mut self.workspace_list, workspace_len, page_size)
                     }
                     PageDirection::Up => {
-                        selection::page_up(&mut self.workspace_list, workspace_len, PAGE_SIZE)
+                        selection::page_up(&mut self.workspace_list, workspace_len, page_size)
                     }
                 }
             }
@@ -143,12 +146,12 @@ impl WorkspaceState {
                 PageDirection::Down => selection::page_down(
                     &mut self.project_session_list,
                     self.project_sessions.len(),
-                    PAGE_SIZE,
+                    page_size,
                 ),
                 PageDirection::Up => selection::page_up(
                     &mut self.project_session_list,
                     self.project_sessions.len(),
-                    PAGE_SIZE,
+                    page_size,
                 ),
             },
         }
