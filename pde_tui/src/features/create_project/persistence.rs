@@ -369,6 +369,7 @@ impl CreateProjectState {
         state.enable_rtui = capabilities.iter().any(|item| item.as_str() == Some("rtui"));
         state.enable_pantsui = capabilities.iter().any(|item| item.as_str() == Some("pantsui"));
         state.extra_capabilities = capabilities.iter().filter_map(|item| item.as_str()).filter(|item| !matches!(*item, "rtui" | "pantsui")).map(str::to_string).collect();
+        state.baseline = state.draft();
         Ok(state)
     }
 }

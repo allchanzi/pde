@@ -2,7 +2,7 @@ impl CreateProjectState {
     fn handle_confirm_key(&mut self, key: KeyCode) -> Effect {
         match key {
             KeyCode::Char('y' | 'Y') => self.submit(),
-            KeyCode::Char('n' | 'N') => {
+            KeyCode::Char('n' | 'N') | KeyCode::Esc => {
                 self.confirm = ConfirmState::Editing;
                 Effect::None
             }

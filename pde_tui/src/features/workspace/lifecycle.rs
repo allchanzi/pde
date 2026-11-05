@@ -78,7 +78,7 @@ impl WorkspaceState {
                 theme.shortcut_line("[Ctrl+d/u] half page • [Ctrl+f/b] full page"),
                 theme.shortcut_line("[r]efresh"),
                 theme.shortcut_line("[u]pdate PDE, rtui and pantsui"),
-                theme.shortcut_line("[q]uit / [Esc] quit"),
+                theme.shortcut_line("[q]uit"),
             ],
         ]
         .into_iter()

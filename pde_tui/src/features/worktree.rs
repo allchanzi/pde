@@ -93,7 +93,7 @@ impl WorktreeState {
                 return Ok(Effect::None);
             }
         }
-        if key.code == KeyCode::Char('?') {
+        if key.code == KeyCode::Char('?') && self.step != Step::Name {
             return Ok(Effect::ToggleHelp);
         }
         Ok(match self.step {
@@ -181,12 +181,20 @@ impl WorktreeState {
         })
     }
 
+    pub fn status_label(&self) -> &'static str {
+        match self.step {
+            Step::Branch => "NORMAL",
+            Step::Name => "INSERT",
+            Step::Confirm => "CONFIRM",
+        }
+    }
+
     fn shortcuts(&self) -> &'static str {
         match self.step {
             Step::Branch => {
                 "[↑/↓] / [j/k] select • [gg/G] first/last • [Enter] continue • [Esc] cancel • [?] help"
             }
-            Step::Name => "Type branch name • [Enter] review • [Esc] back • [?] help",
+            Step::Name => "Type branch name • [Enter] review • [Esc] back",
             Step::Confirm => "Create and open worktree? [y]es / [n]o • [?] help",
         }
     }

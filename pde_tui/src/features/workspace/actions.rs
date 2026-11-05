@@ -64,19 +64,26 @@ impl WorkspaceState {
         match self.focus {
             FocusPane::Projects => self
                 .selected_project()
-                .map(|project| {
-                    Effect::Suspend(ExternalCommand::Projects(vec![
+                .map(|project| Effect::ConfirmCommand {
+                    prompt: format!(
+                        "[y]es / [n]o • Remove project \"{}\" from the registry? Files stay on disk.",
+                        project.slug
+                    ),
+                    command: ExternalCommand::Projects(vec![
                         "delete".into(),
                         project.slug.clone(),
                         "--yes".into(),
-                    ]))
+                    ]),
                 })
                 .unwrap_or(Effect::None),
             FocusPane::Workspaces => self
                 .selected_workspace()
                 .and_then(|row| row.branch.as_ref().map(|branch| (row, branch)))
-                .map(|(_, branch)| {
-                    Effect::Suspend(ExternalCommand::Projects(vec![
+                .map(|(_, branch)| Effect::ConfirmCommand {
+                    prompt: format!(
+                        "[y]es / [n]o • Delete worktree \"{branch}\"? Uncommitted changes are lost."
+                    ),
+                    command: ExternalCommand::Projects(vec![
                         "open".into(),
                         self.selected_project()
                             .map(|project| project.slug.clone())
@@ -84,7 +91,7 @@ impl WorkspaceState {
                         "--delete-worktree".into(),
                         "-b".into(),
                         branch.clone(),
-                    ]))
+                    ]),
                 })
                 .unwrap_or_else(|| Effect::Message("Main workspace cannot be deleted".into())),
             FocusPane::GlobalSessions => self.kill_session_action(SessionPane::Global),
@@ -147,7 +154,7 @@ impl WorkspaceState {
 
     fn kill_session_action(&self, pane: SessionPane) -> Effect {
         self.selected_session(pane)
-            .map(|session| match session.backend {
+            .map(|session| (session.session.clone(), match session.backend {
                 SessionBackend::Tmux => ExternalCommand::Program {
                     program: "tmux".into(),
                     args: vec!["kill-session".into(), "-t".into(), session.session.clone()],
@@ -160,8 +167,11 @@ impl WorkspaceState {
                         session.session.clone(),
                     ],
                 },
+            }))
+            .map(|(name, command)| Effect::ConfirmCommand {
+                prompt: format!("[y]es / [n]o • Kill session \"{name}\"? Its processes stop."),
+                command,
             })
-            .map(Effect::Suspend)
             .unwrap_or_else(|| Effect::Message("No active session selected".into()))
     }
 

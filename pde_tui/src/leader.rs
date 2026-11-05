@@ -73,16 +73,28 @@ pub fn draw_which_key(frame: &mut Frame<'_>, app: &App) {
 
 pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let p = app.theme.palette;
+    let mode_label = match &app.mode {
+        Mode::Workspace => "NORMAL",
+        Mode::CreateProject(state) => state.status_label(),
+        Mode::Worktree(state) => state.status_label(),
+    };
     let (label, accent) = if app.show_help {
         ("HELP", p.yellow)
+    } else if app.pending_command.is_some() {
+        ("CONFIRM", p.red)
     } else if app.details.open {
         ("DETAILS", p.pink)
     } else {
-        match app.mode {
-            Mode::Workspace => ("NORMAL", p.blue),
-            Mode::CreateProject(_) => ("INSERT", p.green),
-            Mode::Worktree(_) => ("WORKTREE", p.pink),
+        match mode_label {
+            "INSERT" => ("INSERT", p.green),
+            "CONFIRM" => ("CONFIRM", p.red),
+            _ => ("NORMAL", p.blue),
         }
+    };
+    let context = match &app.mode {
+        Mode::Workspace => app.workspace.focus_title(),
+        Mode::CreateProject(state) => state.title(),
+        Mode::Worktree(_) => "Worktree",
     };
     let project = app
         .root()
@@ -90,7 +102,12 @@ pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_default();
     let message = app.message.trim();
-    let (center, center_color) = if app.details.open {
+    let (center, center_color) = if let Some((prompt, _)) = &app.pending_command {
+        (prompt.clone(), p.yellow)
+    } else if !matches!(app.mode, Mode::Workspace) {
+        // Forms show their own message and shortcuts inside the panel.
+        (String::new(), p.subtle)
+    } else if app.details.open {
         (
             "[1-5/h/l] cards • [j/k] scroll • [g/G] top/bottom • [Esc/v] close".to_string(),
             p.subtle,
@@ -102,11 +119,15 @@ pub fn draw_status(frame: &mut Frame<'_>, area: Rect, app: &App) {
     } else {
         (message.to_string(), p.text)
     };
-    Rustline::new(Palette { base: p.base, text: p.text }, Separators::Powerline)
-        .left(Segment::new(label, p.base, accent).required().max_width(12))
-        .left(Segment::new(project, p.base, p.pink).max_width(24).min_width(3))
-        .left(Segment::new(app.workspace.focus_title(), p.text, p.surface0).min_bar_width(80))
-        .right(
+    let mut line = Rustline::new(Palette { base: p.base, text: p.text }, Separators::Powerline)
+        .left(Segment::new(label, p.base, accent).required().max_width(12));
+    // A confirmation names its target and choices, so it gets the whole bar.
+    if app.pending_command.is_none() {
+        line = line
+            .left(Segment::new(project, p.base, p.pink).max_width(24).min_width(3))
+            .left(Segment::new(context, p.text, p.surface0).min_bar_width(80));
+    }
+    line.right(
             Segment::new(format!("v{}", env!("CARGO_PKG_VERSION")), p.base, p.blue)
                 .required()
                 .bold(false),

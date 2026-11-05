@@ -50,6 +50,9 @@ impl CreateProjectState {
         if self.confirm == ConfirmState::ConfirmCreate {
             return if self.edit_slug.is_some() { "Save changes? [y]es / [n]o • [?] help" } else { "Create project? [y]es / [n]o • [?] help" };
         }
+        if self.confirm == ConfirmState::ConfirmDiscard {
+            return "Discard unsaved changes? [y]es / [n]o";
+        }
         if self.pending_n {
             return "Add: [p]ane / [r]ow • [Esc] cancel";
         }
@@ -62,8 +65,11 @@ impl CreateProjectState {
         if self.field == Field::Layout {
             return match self.layout_mode {
                 LayoutEditMode::Navigate => "[Tab] next • [Shift+Tab] back • [Enter] review • [?] help • [Esc] cancel",
-                LayoutEditMode::EditCommand => "Type pane command • [Enter/Esc] finish • [?] help",
+                LayoutEditMode::EditCommand => "Type pane command • [Enter/Esc] finish",
             };
+        }
+        if self.in_text_field() {
+            return "Type value • [Enter/Tab] next • [Shift+Tab] previous • [Esc] cancel";
         }
         "[Enter/Tab] next • [Shift+Tab] previous • [?] help • [Esc] cancel"
     }
