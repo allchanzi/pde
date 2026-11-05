@@ -57,6 +57,7 @@ fn event_loop(terminal: &mut AppTerminal, mut app: App) -> Result<()> {
                 Effect::None
                 | Effect::Message(_)
                 | Effect::ToggleHelp
+                | Effect::ConfirmCommand { .. }
                 | Effect::OpenWorktree { .. }
                 | Effect::OpenEditProject(_)
                 | Effect::OpenCreateProject
@@ -97,29 +98,22 @@ fn next_effect(app: &mut App) -> Result<Option<Effect>> {
 }
 
 fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
-    if let Mode::CreateProject(state) = &app.mode {
-        let area = centered_rect(94, 94, frame.area());
-        create_project::render(frame, area, state, &app.theme, !app.show_help, &app.message);
-        if app.show_help {
-            render_help_popup(frame, app);
-        }
-        return;
-    }
-
-    if let Mode::Worktree(state) = &mut app.mode {
-        let area = centered_rect(80, 80, frame.area());
-        worktree::render(frame, area, state, &app.theme, !app.show_help);
-        if app.show_help {
-            render_help_popup(frame, app);
-        }
-        return;
-    }
     let [main, footer] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1)])
         .areas(frame.area());
 
-    workspace::render(frame, main, &mut app.workspace, &app.theme);
+    match &mut app.mode {
+        Mode::CreateProject(state) => {
+            let area = centered_rect(94, 94, main);
+            create_project::render(frame, area, state, &app.theme, !app.show_help, &app.message);
+        }
+        Mode::Worktree(state) => {
+            let area = centered_rect(80, 80, main);
+            worktree::render(frame, area, state, &app.theme, !app.show_help);
+        }
+        Mode::Workspace => workspace::render(frame, main, &mut app.workspace, &app.theme),
+    }
     crate::leader::draw_status(frame, footer, app);
     crate::leader::draw_which_key(frame, app);
 
@@ -242,6 +236,15 @@ mod tests {
             .map(|cell| cell.symbol())
             .collect()
     }
+    #[test]
+    fn forms_keep_the_status_line_with_their_real_mode() {
+        let mut app = App::fixture();
+        app.mode = Mode::CreateProject(create_project::CreateProjectState::new());
+        let form = screen(&mut app, 100, 30);
+        assert!(form.contains("INSERT"), "{form}");
+        assert!(form.contains("Create project"), "{form}");
+    }
+
     #[test]
     fn details_scroll_reaches_real_bottom_and_clamps_after_resize() {
         let mut app = App::fixture();

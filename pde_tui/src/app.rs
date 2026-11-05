@@ -23,6 +23,10 @@ pub enum Effect {
     Message(String),
     ToggleHelp,
     Suspend(ExternalCommand),
+    ConfirmCommand {
+        prompt: String,
+        command: ExternalCommand,
+    },
     OpenWorktree {
         slug: String,
         path: String,
@@ -51,6 +55,7 @@ pub struct App {
     pub details: Details,
     pub details_max_scroll: usize,
     pub which_key: WhichKey<&'static str>,
+    pub pending_command: Option<(String, ExternalCommand)>,
 }
 
 impl App {
@@ -65,6 +70,7 @@ impl App {
             details: Details::default(),
             details_max_scroll: 0,
             which_key: crate::leader::which_key(),
+            pending_command: None,
         })
     }
 
@@ -80,6 +86,21 @@ impl App {
                 self.show_help = false;
             }
             return Ok(Effect::None);
+        }
+        if let Some((_, command)) = &self.pending_command {
+            return Ok(match key.code {
+                KeyCode::Char('y') if key.modifiers.is_empty() => {
+                    let command = command.clone();
+                    self.pending_command = None;
+                    Effect::Suspend(command)
+                }
+                KeyCode::Char('n') | KeyCode::Esc => {
+                    self.pending_command = None;
+                    self.message = "Cancelled.".into();
+                    Effect::None
+                }
+                _ => Effect::None,
+            });
         }
         if self.details.open {
             if key.code == KeyCode::Char('?') {
@@ -166,6 +187,10 @@ impl App {
                 self.show_help = !self.show_help;
                 Effect::None
             }
+            Effect::ConfirmCommand { prompt, command } => {
+                self.pending_command = Some((prompt, command));
+                Effect::None
+            }
             Effect::OpenWorktree {
                 slug,
                 path,
@@ -236,6 +261,7 @@ impl App {
             details: Details::default(),
             details_max_scroll: 0,
             which_key: crate::leader::which_key(),
+            pending_command: None,
         }
     }
 }
@@ -246,6 +272,33 @@ mod tests {
     use crossterm::event::KeyModifiers;
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn delete_runs_only_after_an_explicit_yes() {
+        let mut app = App::fixture();
+        assert_eq!(app.handle_key(key(KeyCode::Char('d'))).unwrap(), Effect::None);
+        let prompt = app.pending_command.as_ref().unwrap().0.clone();
+        assert!(prompt.contains("session-0"), "{prompt}");
+        for held in ['d', 'd', 'j'] {
+            assert_eq!(app.handle_key(key(KeyCode::Char(held))).unwrap(), Effect::None);
+        }
+        assert!(app.pending_command.is_some());
+        app.handle_key(key(KeyCode::Esc)).unwrap();
+        assert!(app.pending_command.is_none());
+        app.handle_key(key(KeyCode::Char('d'))).unwrap();
+        assert!(matches!(
+            app.handle_key(key(KeyCode::Char('y'))).unwrap(),
+            Effect::Suspend(_)
+        ));
+        assert!(app.pending_command.is_none());
+    }
+
+    #[test]
+    fn esc_does_not_quit_the_workspace_but_q_does() {
+        let mut app = App::fixture();
+        assert_eq!(app.handle_key(key(KeyCode::Esc)).unwrap(), Effect::None);
+        assert_eq!(app.handle_key(key(KeyCode::Char('q'))).unwrap(), Effect::Quit);
     }
 
     #[test]

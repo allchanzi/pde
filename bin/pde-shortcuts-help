@@ -82,7 +82,7 @@ Prefix mode (Ctrl-a ...)
 Resize
 ------
   a                Resize pane left
-  d                Resize pane right
+  D                Resize pane right
   w                Resize pane up
   s                Resize pane down
 

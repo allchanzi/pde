@@ -1,7 +1,7 @@
 impl CreateProjectState {
     pub fn new() -> Self {
         let capabilities_enabled = default_capabilities_enabled();
-        Self {
+        let mut state = Self {
             edit_slug: None,
             extra_capabilities: vec![],
             field: Field::Name,
@@ -34,12 +34,61 @@ impl CreateProjectState {
             new_pane_picker: None,
             layout_mode: LayoutEditMode::Navigate,
             confirm: ConfirmState::Editing,
+            baseline: FormDraft::default(),
+        };
+        state.baseline = state.draft();
+        state
+    }
+
+    fn draft(&self) -> FormDraft {
+        FormDraft {
+            name: self.name.clone(),
+            path: self.path.clone(),
+            base_branch: self.base_branch.clone(),
+            selected_multiplexer: self.selected_multiplexer,
+            enable_rtui: self.enable_rtui,
+            enable_pantsui: self.enable_pantsui,
+            layout: self.layout.clone(),
         }
+    }
+
+    fn in_text_field(&self) -> bool {
+        matches!(self.field, Field::Name | Field::Path | Field::BaseBranch)
+    }
+
+    pub fn status_label(&self) -> &'static str {
+        if self.confirm != ConfirmState::Editing {
+            "CONFIRM"
+        } else if self.in_text_field()
+            || (self.field == Field::Layout && self.layout_mode == LayoutEditMode::EditCommand)
+        {
+            "INSERT"
+        } else {
+            "NORMAL"
+        }
+    }
+
+    fn request_close(&mut self) -> Effect {
+        if self.draft() == self.baseline {
+            return Effect::CloseCreateProject;
+        }
+        self.confirm = ConfirmState::ConfirmDiscard;
+        Effect::None
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Result<Effect> {
         if self.confirm == ConfirmState::ConfirmCreate {
             return Ok(self.handle_confirm_key(key.code));
+        }
+        if self.confirm == ConfirmState::ConfirmDiscard {
+            return Ok(match key.code {
+                KeyCode::Char('y' | 'Y') => Effect::CloseCreateProject,
+                KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                    self.confirm = ConfirmState::Editing;
+                    Effect::None
+                }
+                _ => Effect::None,
+            });
         }
         if self.new_pane_picker.is_some() {
             return Ok(self.handle_new_pane_picker_key(key.code));
@@ -67,8 +116,8 @@ impl CreateProjectState {
                 }
                 Effect::None
             }
-            KeyCode::Char('?') => Effect::ToggleHelp,
-            KeyCode::Esc => Effect::CloseCreateProject,
+            KeyCode::Char('?') if !self.in_text_field() => Effect::ToggleHelp,
+            KeyCode::Esc => self.request_close(),
             KeyCode::Enter if self.field == Field::Layout => self.request_confirmation(),
             KeyCode::Enter | KeyCode::Tab => self.next_field(),
             KeyCode::BackTab => {

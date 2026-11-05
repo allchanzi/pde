@@ -19,7 +19,7 @@ impl WorkspaceState {
 
         Ok(match key.code {
             KeyCode::Char('?') => Effect::ToggleHelp,
-            KeyCode::Char('q') | KeyCode::Esc => Effect::Quit,
+            KeyCode::Char('q') => Effect::Quit,
             KeyCode::Char(c @ '1'..='4') => {
                 self.focus = match c {
                     '1' => FocusPane::Projects,

@@ -63,6 +63,19 @@ pub struct LayoutPane {
 enum ConfirmState {
     Editing,
     ConfirmCreate,
+    ConfirmDiscard,
+}
+
+/// The user-editable values, compared with the opening state to detect unsaved work.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct FormDraft {
+    name: String,
+    path: String,
+    base_branch: String,
+    selected_multiplexer: usize,
+    enable_rtui: bool,
+    enable_pantsui: bool,
+    layout: Vec<LayoutTab>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +144,7 @@ pub struct CreateProjectState {
     new_pane_picker: Option<NewPanePickerState>,
     layout_mode: LayoutEditMode,
     confirm: ConfirmState,
+    baseline: FormDraft,
 }
 
 include!("interaction.rs");
@@ -231,6 +245,42 @@ mod tests {
         };
         assert_eq!(spec.edit_slug.as_deref(), Some("original-slug"));
         assert!(spec.capabilities.contains(&"requests".to_string()));
+    }
+
+    #[test]
+    fn question_mark_is_text_in_text_fields_and_help_elsewhere() {
+        let mut state = CreateProjectState::new();
+        let press = |state: &mut CreateProjectState, code| {
+            state
+                .handle_key(KeyEvent::new(code, crossterm::event::KeyModifiers::NONE))
+                .unwrap()
+        };
+        assert_eq!(press(&mut state, KeyCode::Char('?')), Effect::None);
+        assert_eq!(state.name, "?");
+        state.field = Field::Capabilities;
+        assert_eq!(press(&mut state, KeyCode::Char('?')), Effect::ToggleHelp);
+    }
+
+    #[test]
+    fn esc_closes_a_clean_form_and_asks_before_discarding_changes() {
+        let mut state = CreateProjectState::new();
+        let press = |state: &mut CreateProjectState, code| {
+            state
+                .handle_key(KeyEvent::new(code, crossterm::event::KeyModifiers::NONE))
+                .unwrap()
+        };
+        assert_eq!(press(&mut state, KeyCode::Esc), Effect::CloseCreateProject);
+        press(&mut state, KeyCode::Char('x'));
+        assert_eq!(press(&mut state, KeyCode::Esc), Effect::None);
+        assert_eq!(state.status_label(), "CONFIRM");
+        assert_eq!(press(&mut state, KeyCode::Char('n')), Effect::None);
+        assert_eq!(state.name, "x");
+        assert_eq!(state.status_label(), "INSERT");
+        press(&mut state, KeyCode::Esc);
+        assert_eq!(press(&mut state, KeyCode::Esc), Effect::None);
+        assert_eq!(state.confirm, ConfirmState::Editing);
+        press(&mut state, KeyCode::Esc);
+        assert_eq!(press(&mut state, KeyCode::Char('y')), Effect::CloseCreateProject);
     }
 
     #[test]
