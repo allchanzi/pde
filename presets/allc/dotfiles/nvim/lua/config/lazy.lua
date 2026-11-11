@@ -19,6 +19,13 @@ vim.opt.rtp:prepend(lazypath)
 require("lazy").setup({
   { import = "plugins" },
 }, {
+  -- vim.loader encodes full source paths into cache filenames. Bundled release
+  -- paths can exceed the filesystem's filename limit and fail with ENAMETOOLONG.
+  performance = {
+    cache = {
+      enabled = false,
+    },
+  },
   -- Disable luarocks support (we don't need it → avoids warnings)
   rocks = {
     enabled = false,
