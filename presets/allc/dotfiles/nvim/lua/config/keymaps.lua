@@ -43,11 +43,11 @@ map("n", "N", "Nzzzv", { desc = "Prev match (centered)" })
 map("n", "<C-d>", "<C-d>zz", { desc = "Half page down (centered)" })
 map("n", "<C-u>", "<C-u>zz", { desc = "Half page up (centered)" })
 
--- Move the current line / selection up and down
-map("n", "<A-j>", "<cmd>m .+1<cr>==", { desc = "Move line down" })
-map("n", "<A-k>", "<cmd>m .-2<cr>==", { desc = "Move line up" })
-map("v", "<A-j>", ":m '>+1<cr>gv=gv", { desc = "Move selection down" })
-map("v", "<A-k>", ":m '<-2<cr>gv=gv", { desc = "Move selection up" })
+-- Move the current line / selection up and down. Not Alt: tmux and Zellij own it.
+map("n", "]e", "<cmd>m .+1<cr>==", { desc = "Move line down" })
+map("n", "[e", "<cmd>m .-2<cr>==", { desc = "Move line up" })
+map("x", "]e", ":m '>+1<cr>gv=gv", { desc = "Move selection down" })
+map("x", "[e", ":m '<-2<cr>gv=gv", { desc = "Move selection up" })
 
 -- Paste over a selection without clobbering the unnamed register
 map("x", "p", "\"_dP", { desc = "Paste without yanking selection" })
@@ -81,7 +81,6 @@ map("n", "K", vim.lsp.buf.hover, { desc = "Hover documentation" })
 map({ "n", "i" }, "<C-k>", vim.lsp.buf.signature_help, { desc = "Signature help" })
 map("n", "<leader>ca", vim.lsp.buf.code_action, { desc = "Code action" })
 map("n", "<leader>cr", vim.lsp.buf.rename, { desc = "Rename symbol" })
-map("n", "<leader>rn", vim.lsp.buf.rename, { desc = "Rename symbol" })
 map("n", "<leader>cd", vim.diagnostic.open_float, { desc = "Line diagnostics" })
 map("n", "<leader>cl", "<cmd>LspRestart<cr>", { desc = "Reset LSP" })
 map("n", "<leader>fR", function()
@@ -98,6 +97,9 @@ end, { desc = "Format file" })
 
 -- Cheatsheet popup
 map("n", "<leader>h", function()
+  require("config.cheatsheet").open()
+end, { desc = "Help popup" })
+map("n", "<leader>?", function()
   require("config.cheatsheet").open()
 end, { desc = "Help popup" })
 

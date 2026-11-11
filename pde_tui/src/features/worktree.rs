@@ -98,7 +98,7 @@ impl WorktreeState {
         }
         Ok(match self.step {
             Step::Branch => match key.code {
-                KeyCode::Esc => Effect::CloseCreateProject,
+                KeyCode::Esc | KeyCode::Char('q') => Effect::CloseCreateProject,
                 KeyCode::Down | KeyCode::Char('j') => {
                     let index =
                         (self.selection.selected().unwrap_or(0) + 1).min(self.branches.len() - 1);

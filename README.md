@@ -66,6 +66,12 @@ The repo is split into the PDE app and install presets. On Linux, the root insta
 
 The create-project form offers installed `tmux`/`zellij` backends and saves the choice per project. Older projects use the global multiplexer preference. Tool presets are filtered by installed commands; missing `rtui`/`pantsui` capabilities are disabled.
 
+In both Create project and Edit project, select Layout and press `o`, then `f` to apply `full-development`. This replaces the draft layout with seven tabs in order: terminal, Neovim (`nvim .`), `fleetui`, `gtui`, `rtui .`, `pantsui`, and `lazydocker`. The preset appears when all six tools are installed. Save the project and start a new session to use the layout with tmux or Zellij.
+
+Full-development releases include PDE, `fleetui`, `gtui`, `rtui`, `pantsui`, the official Neovim distribution (including its runtime), and `lazydocker` in one Linux archive. Extract it to a permanent location and add its `bin` directory to `PATH`. Bash, Python 3, Git, Zsh, and tmux or Zellij must already be installed; the tools use your existing Docker daemon and service logins.
+
+Each release also includes a source archive containing all six Rust source trees, including `tui-helpers`. To rebuild it, extract that archive and run `bash pde/scripts/build-full-development-release.sh "$PWD" "$PWD/dist"` from its root. The builder requires Rust, Git, GitHub CLI, tar, and sha256sum; it builds all five applications with `--release --locked` and packages pinned Neovim/lazydocker releases. Publishing the release triggers Linux x86_64 and ARM64 builds from that same source archive.
+
 Machine-local choices live in `~/.config/pde/prefs` and optional local override files under `~/.config/tmux/` or `~/.config/zellij/layouts/`.
 
 ---
@@ -717,13 +723,17 @@ Project metadata is stored in:
 
 When creating a new project, the suggested path defaults to `$HOME/projects/<slug>`. Override the base directory by exporting `PDE_PROJECTS_DIR` in your environment, e.g. `export PDE_PROJECTS_DIR="$HOME/Documents/code"`.
 
-In the PDE TUI, use `j/k`, `g/G`, `Ctrl+d/u` (half page), and `Ctrl+f/b`
-(full page) to navigate. `Tab`/`Shift+Tab` or `h/l` changes panel focus.
-`a` adds, `e` edits, and Enter or `o` opens a project or attaches a session.
-Form fields accept text directly. `?` opens contextual help.
+In the PDE TUI, use `j/k`, `gg/G`, `Ctrl+d/u` (half page), and `Ctrl+f/b`
+(full page) to navigate. `Tab`/`Shift+Tab`, `h/l`, `1-4` or `Ctrl+h/j/k/l`
+changes panel focus; `Alt` stays with tmux and Zellij. `/` searches the focused
+list with smartcase and `n/N` repeat it. `a` adds, `e` edits, `d` deletes after a
+confirmation, and Enter or `o` opens a project or attaches a session. `q` quits,
+`Esc` never does, and `Ctrl+c` cancels what is open or pending.
+Form fields accept text directly. `?` opens contextual help, which scrolls with
+`j/k` when it does not fit.
 
-`v` shows details: `1–5` or `h/l` selects a card, `j/k` scrolls, `g/G` jumps
-to the top/bottom, and `v` or Esc closes it.
+`v` shows details: `1–5` or `h/l` selects a card, `j/k` scrolls, `gg/G` jumps
+to the top/bottom, and `v`, `q` or Esc closes it.
 
 Main commands:
 
@@ -861,7 +871,6 @@ nvim/lua/plugins/*.lua # glob
 | `K` | Hover documentation |
 | `SPC c a` | Code action |
 | `SPC c f` | Format file |
-| `SPC r n` | Rename symbol |
 
 #### Diagnostics
 

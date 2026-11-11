@@ -14,7 +14,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     text::Line,
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Clear, Paragraph},
 };
 
 use crate::{
@@ -92,12 +92,20 @@ fn next_effect(app: &mut App) -> Result<Option<Effect>> {
         return Ok(None);
     };
 
+    // Nothing is visible below the minimum size, so only quitting is safe.
+    let (width, height) = crossterm::terminal::size()?;
+    if !tuikit::fits(width, height) && key.code != crossterm::event::KeyCode::Char('q') {
+        return Ok(None);
+    }
     (key.kind == KeyEventKind::Press)
         .then(|| app.handle_key(key))
         .transpose()
 }
 
 fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
+    if tuikit::too_small(frame, frame.area()) {
+        return;
+    }
     let [main, footer] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(3), Constraint::Length(1)])
@@ -121,13 +129,13 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
         render_details(frame, app, main);
     }
     if app.show_help {
-        render_help_popup(frame, app);
+        render_help_popup(frame, main, app);
     }
 }
 
 fn render_details(frame: &mut ratatui::Frame<'_>, app: &mut App, content: ratatui::layout::Rect) {
     let area = centered_rect(90, 90, content);
-    let block = app.theme.panel_block(" Details [v/Esc] close ", true);
+    let block = app.theme.panel_block(" Details [v/q/Esc] close ", true);
     let inner = block.inner(area);
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
@@ -169,18 +177,13 @@ fn render_details(frame: &mut ratatui::Frame<'_>, app: &mut App, content: ratatu
     );
 }
 
-fn render_help_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
-    let area = centered_rect(62, 62, frame.area());
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" [?] Help ")
-        .border_style(app.theme.help_title());
+fn render_help_popup(frame: &mut ratatui::Frame<'_>, area: ratatui::layout::Rect, app: &App) {
     let lines = if app.details.open {
         vec![
             app.theme
-                .shortcut_line("[1–5/h/l] cards • [j/k] scroll • [g/G] top/bottom"),
+                .shortcut_line("[1–5/h/l] cards • [j/k] scroll • [gg/G] top/bottom"),
             app.theme
-                .shortcut_line("[Esc/v] close • [Tab/Shift+Tab] focus • [?] help"),
+                .shortcut_line("[Esc/v/q] close • [Tab/Shift+Tab] focus • [?] help"),
         ]
     } else {
         match &app.mode {
@@ -189,10 +192,8 @@ fn render_help_popup(frame: &mut ratatui::Frame<'_>, app: &App) {
             Mode::Worktree(state) => state.help(&app.theme),
         }
     };
-    let help = Paragraph::new(lines).block(block).wrap(Wrap { trim: true });
-
-    frame.render_widget(Clear, area);
-    frame.render_widget(help, area);
+    app.help_popup
+        .render(frame, area, " [?] Help ", lines, app.theme.help_title());
 }
 
 fn centered_rect(
@@ -262,5 +263,29 @@ mod tests {
         for (width, height) in [(1, 1), (8, 3), (20, 8)] {
             screen(&mut app, width, height);
         }
+    }
+
+    #[test]
+    fn below_the_minimum_size_only_the_notice_is_drawn() {
+        let mut app = App::fixture();
+        let small = screen(&mut app, 30, 8);
+        assert!(small.contains("Enlarge terminal"), "{small}");
+        assert!(!small.contains("Global"), "{small}");
+        let normal = screen(&mut app, 40, 10);
+        assert!(!normal.contains("Enlarge terminal"), "{normal}");
+    }
+
+    #[test]
+    fn help_scrolls_to_its_real_end_on_a_small_terminal() {
+        let mut app = App::fixture();
+        app.show_help = true;
+        let top = screen(&mut app, 60, 12);
+        assert!(top.contains("scroll") && !top.contains("[q]uit"), "{top}");
+        app.handle_key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('G'),
+            crossterm::event::KeyModifiers::NONE,
+        ))
+        .unwrap();
+        assert!(screen(&mut app, 60, 12).contains("[q]uit"));
     }
 }

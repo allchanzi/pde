@@ -128,6 +128,7 @@ impl CreateProjectState {
                 Effect::None
             }
             KeyCode::Enter => self.apply_new_pane_picker_choice(),
+            KeyCode::Char('f') => self.apply_new_pane_choice(NewPaneChoice::FullDevelopment),
             KeyCode::Char('e') => self.apply_new_pane_choice(NewPaneChoice::EditorTab),
             KeyCode::Char('i') => self.apply_new_pane_choice(NewPaneChoice::IdeTab),
             KeyCode::Char('g') => self.apply_new_pane_choice(NewPaneChoice::GitTab),
@@ -167,6 +168,13 @@ impl CreateProjectState {
         }
         self.new_pane_picker = None;
         match choice {
+            NewPaneChoice::FullDevelopment => {
+                self.layout = full_development_layout();
+                self.selected_tab = 0;
+                self.selected_row = 0;
+                self.selected_pane = 0;
+                Effect::Message("Applied full-development layout (7 tabs)".into())
+            }
             NewPaneChoice::EmptyPane => {
                 self.add_window();
                 Effect::Message("Added empty tab".into())

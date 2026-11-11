@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use tuikit::ScrollPopup;
 use whichkey::{Outcome, WhichKey};
 
 use crate::{
@@ -56,6 +57,7 @@ pub struct App {
     pub details_max_scroll: usize,
     pub which_key: WhichKey<&'static str>,
     pub pending_command: Option<(String, ExternalCommand)>,
+    pub help_popup: ScrollPopup,
 }
 
 impl App {
@@ -71,6 +73,7 @@ impl App {
             details_max_scroll: 0,
             which_key: crate::leader::which_key(),
             pending_command: None,
+            help_popup: ScrollPopup::default(),
         })
     }
 
@@ -78,11 +81,11 @@ impl App {
         if key.kind == KeyEventKind::Release || matches!(key.code, KeyCode::Modifier(_)) {
             return Ok(Effect::None);
         }
+        if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+            return self.cancel_pending();
+        }
         if self.show_help {
-            if matches!(
-                key.code,
-                crossterm::event::KeyCode::Esc | crossterm::event::KeyCode::Char('?')
-            ) {
+            if self.help_popup.key(key) {
                 self.show_help = false;
             }
             return Ok(Effect::None);
@@ -104,6 +107,7 @@ impl App {
         }
         if self.details.open {
             if key.code == KeyCode::Char('?') {
+                self.help_popup.reset();
                 self.show_help = true;
             } else if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
                 self.details.open = false;
@@ -113,6 +117,16 @@ impl App {
                 self.details.key(key.code, self.details_max_scroll);
             }
             return Ok(Effect::None);
+        }
+        if !matches!(self.mode, Mode::Workspace)
+            && matches!(key.code, KeyCode::Char(_))
+            && key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
+            return Ok(Effect::None);
+        }
+        if self.workspace.search_input().is_some() && matches!(self.mode, Mode::Workspace) {
+            let effect = self.workspace.handle_key(key)?;
+            return self.apply_local_effect(effect);
         }
         if matches!(self.mode, Mode::Workspace) {
             if self.which_key.is_open() {
@@ -151,11 +165,14 @@ impl App {
         match outcome {
             Outcome::Action("help") => self.apply_local_effect(Effect::ToggleHelp),
             Outcome::Action("quit") => Ok(Effect::Quit),
+            Outcome::Action("find") => {
+                self.workspace.start_search();
+                Ok(Effect::None)
+            }
             Outcome::Action(action) => match crate::leader::key_for(action) {
-                Some((character, alt)) => self.handle_key(KeyEvent::new(
-                    KeyCode::Char(character),
-                    if alt { KeyModifiers::ALT } else { KeyModifiers::NONE },
-                )),
+                Some(character) => {
+                    self.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE))
+                }
                 None => Ok(Effect::None),
             },
             Outcome::Unknown => {
@@ -164,6 +181,19 @@ impl App {
             }
             Outcome::Pending | Outcome::Cancelled => Ok(Effect::None),
         }
+    }
+
+    /// Ctrl+c cancels what is open or pending. It never quits.
+    fn cancel_pending(&mut self) -> Result<Effect> {
+        self.which_key.cancel();
+        self.show_help = false;
+        self.pending_command = None;
+        self.details.open = false;
+        self.workspace.cancel_search();
+        if matches!(self.mode, Mode::Workspace) {
+            return Ok(Effect::None);
+        }
+        self.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE))
     }
 
     pub fn root(&self) -> &std::path::Path {
@@ -184,6 +214,7 @@ impl App {
                 Effect::None
             }
             Effect::ToggleHelp => {
+                self.help_popup.reset();
                 self.show_help = !self.show_help;
                 Effect::None
             }
@@ -262,6 +293,7 @@ impl App {
             details_max_scroll: 0,
             which_key: crate::leader::which_key(),
             pending_command: None,
+            help_popup: ScrollPopup::default(),
         }
     }
 }
@@ -272,6 +304,59 @@ mod tests {
     use crossterm::event::KeyModifiers;
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn ctrl_c_cancels_and_never_quits() {
+        let control_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let mut app = App::fixture();
+        assert_eq!(app.handle_key(control_c).unwrap(), Effect::None);
+        app.handle_key(key(KeyCode::Char('d'))).unwrap();
+        assert_eq!(app.handle_key(control_c).unwrap(), Effect::None);
+        assert!(app.pending_command.is_none());
+        app.handle_key(key(KeyCode::Char('?'))).unwrap();
+        app.handle_key(control_c).unwrap();
+        assert!(!app.show_help);
+        app.handle_key(key(KeyCode::Char('/'))).unwrap();
+        app.handle_key(control_c).unwrap();
+        assert_eq!(app.workspace.search_input(), None);
+    }
+
+    #[test]
+    fn space_is_text_while_searching_and_opens_the_menu_otherwise() {
+        let mut app = App::fixture();
+        app.handle_key(key(KeyCode::Char('/'))).unwrap();
+        app.handle_key(key(KeyCode::Char(' '))).unwrap();
+        assert!(!app.which_key.is_open());
+        assert_eq!(app.workspace.search_input(), Some(" "));
+        app.handle_key(key(KeyCode::Esc)).unwrap();
+        app.handle_key(key(KeyCode::Char(' '))).unwrap();
+        assert!(app.which_key.is_open());
+        app.handle_key(key(KeyCode::Char('f'))).unwrap();
+        assert_eq!(app.workspace.search_input(), Some(""));
+    }
+
+    #[test]
+    fn help_closes_with_q_and_does_not_quit() {
+        let mut app = App::fixture();
+        app.handle_key(key(KeyCode::Char('?'))).unwrap();
+        assert_eq!(app.handle_key(key(KeyCode::Char('q'))).unwrap(), Effect::None);
+        assert!(!app.show_help);
+    }
+
+    #[test]
+    fn control_letters_do_not_type_into_forms() {
+        let mut app = App::fixture();
+        app.mode = Mode::CreateProject(CreateProjectState::new());
+        app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL))
+            .unwrap();
+        app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(
+            app.pending_command, None,
+            "Ctrl+c on a clean form closes it through Esc"
+        );
+        assert!(matches!(app.mode, Mode::Workspace));
     }
 
     #[test]

@@ -2,6 +2,21 @@ fn editor_tab() -> LayoutTab {
     command_tab("editor", "${EDITOR:-nvim} .")
 }
 
+fn full_development_layout() -> Vec<LayoutTab> {
+    [
+        ("terminal", ""),
+        ("nvim", "nvim ."),
+        ("fleetui", "fleetui"),
+        ("gtui", "gtui"),
+        ("rtui", "rtui ."),
+        ("pantsui", "pantsui"),
+        ("lazydocker", "lazydocker"),
+    ]
+    .into_iter()
+    .map(|(name, command)| command_tab(name, command))
+    .collect()
+}
+
 fn ide_tab() -> LayoutTab {
     LayoutTab {
         name: "ide".into(),
@@ -82,6 +97,7 @@ impl NewPaneChoice {
     fn key(self) -> &'static str {
         match self {
             Self::EmptyPane => "Space",
+            Self::FullDevelopment => "f",
             Self::EditorTab => "e",
             Self::IdeTab => "i",
             Self::GitTab => "g",
@@ -96,6 +112,7 @@ impl NewPaneChoice {
     fn label(self) -> &'static str {
         match self {
             Self::EmptyPane => "Empty tab",
+            Self::FullDevelopment => "full-development",
             Self::EditorTab => "Editor tab",
             Self::IdeTab => "IDE tab",
             Self::GitTab => "Git tab",
@@ -110,6 +127,7 @@ impl NewPaneChoice {
     fn description(self) -> &'static str {
         match self {
             Self::EmptyPane => "New empty tab/tab with one shell pane",
+            Self::FullDevelopment => "Replace layout with 7 development tabs",
             Self::EditorTab => "New tab running ${EDITOR:-nvim} .",
             Self::IdeTab => "New tab: editor left, AI top-right, terminal bottom-right",
             Self::GitTab => "New tab running lazygit",
@@ -126,6 +144,7 @@ impl CreateProjectState {
     fn available_presets(&self) -> Vec<NewPaneChoice> {
         NEW_PANE_CHOICES.into_iter().filter(|choice| match choice {
             NewPaneChoice::EmptyPane => true,
+            NewPaneChoice::FullDevelopment => self.available_full_development,
             NewPaneChoice::EditorTab => command_available(env::var("EDITOR").unwrap_or_else(|_| "nvim".into()).split_whitespace().next().unwrap_or("nvim")),
             NewPaneChoice::IdeTab => command_available(env::var("EDITOR").unwrap_or_else(|_| "nvim".into()).split_whitespace().next().unwrap_or("nvim")) && command_available(env::var("AI_COMMAND_1").unwrap_or_else(|_| "codex".into()).split_whitespace().next().unwrap_or("codex")),
             NewPaneChoice::GitTab => command_available("lazygit"),
