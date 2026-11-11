@@ -111,6 +111,7 @@ impl CreateProjectState {
             theme.shortcut_line("[d]elete selected [r]ow"),
             theme.shortcut_line("[d]elete selected [p]ane"),
             theme.shortcut_line("Presets: editor, ide, git, docker, rtui, pantsui, k9s, monitor"),
+            theme.shortcut_line("[o] then [f]: full-development (replaces layout with 7 tabs)"),
             theme.shortcut_line("[h/l] previous/next pane"),
             theme.shortcut_line("[j/k] next/previous row"),
             theme.shortcut_line("[Left bracket/Right bracket] previous/next tab"),

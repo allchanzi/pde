@@ -6,4 +6,11 @@ resolver = "3"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/allchanzi/pde"
-version = "0.2.8"
+version = "0.2.9"
+
+# Local helpers until tui-helpers is pushed; then remove this and pin `rev` in pde_tui.
+[patch."https://github.com/allchanzi/tui-helpers"]
+rustline = { path = "../tui-helpers/crates/rustline" }
+whichkey = { path = "../tui-helpers/crates/whichkey" }
+panels = { path = "../tui-helpers/crates/panels" }
+tuikit = { path = "../tui-helpers/crates/tuikit" }

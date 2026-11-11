@@ -1,0 +1,68 @@
+name: Full development release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag with a full-development source archive
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download matching source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sources"
+          gh release download "$RELEASE_TAG" \
+            --pattern "pde-full-development-$RELEASE_TAG-sources.tar.gz" \
+            --dir "$RUNNER_TEMP/sources"
+          tar -xzf "$RUNNER_TEMP/sources/pde-full-development-$RELEASE_TAG-sources.tar.gz" \
+            -C "$RUNNER_TEMP/sources"
+
+      - name: Test PDE
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_root="$RUNNER_TEMP/sources/pde-full-development-$RELEASE_TAG-sources"
+          cargo test --locked --manifest-path "$source_root/pde/Cargo.toml"
+
+      - name: Build all tools and package their runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_root="$RUNNER_TEMP/sources/pde-full-development-$RELEASE_TAG-sources"
+          bash "$source_root/pde/scripts/build-full-development-release.sh" \
+            "$source_root" "$RUNNER_TEMP/dist"
+
+      - name: Upload bundle and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/dist"
+          name="pde-full-development-$RELEASE_TAG-${{ matrix.arch }}-unknown-linux-gnu"
+          sha256sum "$name.tar.gz" > "$name.sha256"
+          gh release upload "$RELEASE_TAG" "$name.tar.gz" "$name.sha256" --clobber

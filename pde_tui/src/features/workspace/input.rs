@@ -1,20 +1,20 @@
 impl WorkspaceState {
     pub fn handle_key(&mut self, key: KeyEvent) -> Result<Effect> {
-        if key.modifiers.contains(KeyModifiers::ALT) {
-            self.pending_g = false;
-            return Ok(self.move_focus_by_key(key.code));
+        if self.search_input.is_some() {
+            return self.search_key(key);
         }
-
+        // Alt belongs to the terminal multiplexer.
+        if key.modifiers.intersects(KeyModifiers::ALT | KeyModifiers::SUPER) {
+            self.nav = NavKeys::default();
+            return Ok(Effect::None);
+        }
+        match self.nav.press(key) {
+            NavStep::Move(nav) => return self.apply_nav(nav),
+            NavStep::Pending => return Ok(Effect::None),
+            NavStep::Other => {}
+        }
         if key.modifiers.contains(KeyModifiers::CONTROL) {
-            self.pending_g = false;
-            return self.handle_control_key(key.code);
-        }
-
-        if self.pending_g {
-            self.pending_g = false;
-            if matches!(key.code, KeyCode::Char('g')) {
-                return self.move_first();
-            }
+            return Ok(self.move_focus_by_key(key.code));
         }
 
         Ok(match key.code {
@@ -34,20 +34,16 @@ impl WorkspaceState {
                 self.focus = self.focus.next().next().next();
                 Effect::Message(format!("Focus: {}", self.focus_title()))
             }
-            KeyCode::Home => self.move_first()?,
-            KeyCode::End => self.move_last()?,
-            KeyCode::PageDown => self.page_down()?,
-            KeyCode::PageUp => self.page_up()?,
-            KeyCode::Char(']') => self.page_down()?,
-            KeyCode::Char('[') => self.page_up()?,
+            KeyCode::Char('/') => {
+                self.start_search();
+                Effect::None
+            }
+            KeyCode::Char('n') => self.jump_to_match(false)?,
+            KeyCode::Char('N') => self.jump_to_match(true)?,
             KeyCode::Char('r') => self.refresh_all()?,
             KeyCode::Char('u') => self.update_action(),
             KeyCode::Char('h') | KeyCode::Left => self.move_focus_left(),
             KeyCode::Char('l') | KeyCode::Right => self.move_focus_right(),
-            KeyCode::Down | KeyCode::Char('j') => self.move_down()?,
-            KeyCode::Up | KeyCode::Char('k') => self.move_up()?,
-            KeyCode::Char('g') => self.move_first()?,
-            KeyCode::Char('G') => self.move_last()?,
             KeyCode::Char('e') if matches!(self.focus, FocusPane::Projects | FocusPane::Workspaces) => self.selected_project().map(|project| Effect::OpenEditProject(project.slug.clone())).unwrap_or(Effect::None),
             KeyCode::Char('a') => self.add_action(),
             KeyCode::Char('b') => self.branches_action(),
@@ -57,23 +53,13 @@ impl WorkspaceState {
         })
     }
 
-    fn handle_control_key(&mut self, key: KeyCode) -> Result<Effect> {
-        Ok(match key {
-            KeyCode::Char('d') => self.page_by_size(PageDirection::Down, (self.page_rows / 2).max(1))?,
-            KeyCode::Char('u') => self.page_by_size(PageDirection::Up, (self.page_rows / 2).max(1))?,
-            KeyCode::Char('f') => self.page_down()?,
-            KeyCode::Char('b') => self.page_up()?,
-            _ => Effect::None,
-        })
-    }
-
     fn move_focus_by_key(&mut self, key: KeyCode) -> Effect {
         let next_focus = match key {
-            KeyCode::Char('h') | KeyCode::Char('a') => self.focus_left(),
-            KeyCode::Char('l') | KeyCode::Char('d') => self.focus_right(),
-            KeyCode::Char('k') | KeyCode::Char('w') => self.focus_up(),
-            KeyCode::Char('j') | KeyCode::Char('s') => self.focus_down(),
-            _ => self.focus,
+            KeyCode::Char('h') => self.focus_left(),
+            KeyCode::Char('l') => self.focus_right(),
+            KeyCode::Char('k') => self.focus_up(),
+            KeyCode::Char('j') => self.focus_down(),
+            _ => return Effect::None,
         };
         self.focus = next_focus;
         Effect::Message(format!("Focus: {}", self.focus_title()))

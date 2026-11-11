@@ -55,12 +55,6 @@ enum SessionPane {
     Project,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum PageDirection {
-    Down,
-    Up,
-}
-
 impl WorkspaceState {
     pub fn details(&self, tab: usize) -> Vec<String> {
         match tab {

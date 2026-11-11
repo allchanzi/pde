@@ -17,7 +17,6 @@ return {
         { "<leader>cr", desc = "Rename symbol" },
         { "<leader>cd", desc = "Line diagnostics" },
         { "<leader>cl", desc = "Reset LSP" },
-        { "<leader>rn", desc = "Rename symbol" },
 
         { "<leader>f", group = "Find" },
         { "<leader>ff", desc = "Find files" },
@@ -34,6 +33,7 @@ return {
         { "<leader>fh", desc = "Help tags" },
         { "<leader>fd", desc = "Diagnostics" },
         { "<leader>h",  desc = "Help popup" },
+        { "<leader>?",  desc = "Help popup" },
 
         { "<leader>g", group = "Git" },
         { "<leader>gs", desc = "Git status" },

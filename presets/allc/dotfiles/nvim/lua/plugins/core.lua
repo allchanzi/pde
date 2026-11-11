@@ -73,7 +73,6 @@ return {
       { "<leader>fc", "<cmd>Telescope current_buffer_fuzzy_find<cr>", desc = "Fuzzy find in buffer" },
       { "<leader>fh", "<cmd>Telescope help_tags<cr>",                 desc = "Help tags" },
       { "<leader>fd", "<cmd>Telescope diagnostics<cr>",               desc = "Diagnostics" },
-      { "<leader>r", "<cmd>Telescope registers<cr>", desc = "Registers" },
       { "<leader>gs", "<cmd>Telescope git_status<cr>",                desc = "Git status" },
       { "<leader>gl", "<cmd>Telescope git_commits<cr>",               desc = "Git log" },
       { "<leader>gc", "<cmd>Telescope git_branches<cr>",              desc = "Git branches" },

@@ -93,6 +93,7 @@ enum CapabilityChoice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NewPaneChoice {
     EmptyPane,
+    FullDevelopment,
     EditorTab,
     IdeTab,
     GitTab,
@@ -108,8 +109,9 @@ struct NewPanePickerState {
     selected: usize,
 }
 
-const NEW_PANE_CHOICES: [NewPaneChoice; 9] = [
+const NEW_PANE_CHOICES: [NewPaneChoice; 10] = [
     NewPaneChoice::EmptyPane,
+    NewPaneChoice::FullDevelopment,
     NewPaneChoice::EditorTab,
     NewPaneChoice::IdeTab,
     NewPaneChoice::GitTab,
@@ -132,6 +134,7 @@ pub struct CreateProjectState {
     selected_multiplexer: usize,
     available_rtui: bool,
     available_pantsui: bool,
+    available_full_development: bool,
     enable_rtui: bool,
     enable_pantsui: bool,
     selected_capability: CapabilityChoice,
@@ -280,7 +283,82 @@ mod tests {
         assert_eq!(press(&mut state, KeyCode::Esc), Effect::None);
         assert_eq!(state.confirm, ConfirmState::Editing);
         press(&mut state, KeyCode::Esc);
-        assert_eq!(press(&mut state, KeyCode::Char('y')), Effect::CloseCreateProject);
+        assert_eq!(
+            press(&mut state, KeyCode::Char('y')),
+            Effect::CloseCreateProject
+        );
+    }
+
+    #[test]
+    fn full_development_replaces_layout_when_creating_and_editing() {
+        for edit_slug in [None, Some("existing-project".to_string())] {
+            let mut state = CreateProjectState::new();
+            state.edit_slug = edit_slug.clone();
+            state.available_full_development = true;
+            state.multiplexers = vec!["tmux".into()];
+            state.field = Field::Layout;
+            state.add_preset_tab(ide_tab());
+            let press = |state: &mut CreateProjectState, code| {
+                state
+                    .handle_key(KeyEvent::new(code, crossterm::event::KeyModifiers::NONE))
+                    .unwrap()
+            };
+            press(&mut state, KeyCode::Char('o'));
+            press(&mut state, KeyCode::Char('f'));
+            assert!(state.new_pane_picker.is_none());
+            assert_eq!(
+                (state.selected_tab, state.selected_row, state.selected_pane),
+                (0, 0, 0)
+            );
+            let Effect::CreateProjectSubmit(spec) = state.submit() else {
+                panic!("expected submission")
+            };
+            assert_eq!(spec.edit_slug, edit_slug);
+            let tabs: Vec<_> = spec
+                .layout
+                .iter()
+                .map(|tab| {
+                    assert_eq!(tab.rows.len(), 1);
+                    assert_eq!(tab.rows[0].panes.len(), 1);
+                    (tab.name.as_str(), tab.rows[0].panes[0].command.as_str())
+                })
+                .collect();
+            assert_eq!(
+                tabs,
+                [
+                    ("terminal", ""),
+                    ("nvim", "nvim ."),
+                    ("fleetui", "fleetui"),
+                    ("gtui", "gtui"),
+                    ("rtui", "rtui ."),
+                    ("pantsui", "pantsui"),
+                    ("lazydocker", "lazydocker"),
+                ]
+            );
+            assert_ne!(state.draft(), state.baseline);
+            press(&mut state, KeyCode::Char('o'));
+            press(&mut state, KeyCode::Char('f'));
+            assert_eq!(state.layout, spec.layout);
+        }
+    }
+
+    #[test]
+    fn full_development_requires_all_tools() {
+        let mut state = CreateProjectState::new();
+        state.available_full_development = false;
+        let layout = state.layout.clone();
+        state.open_new_pane_picker();
+        assert!(
+            !state
+                .available_presets()
+                .contains(&NewPaneChoice::FullDevelopment)
+        );
+        assert!(matches!(
+            state.handle_new_pane_picker_key(KeyCode::Char('f')),
+            Effect::Message(_)
+        ));
+        assert_eq!(state.layout, layout);
+        assert!(state.new_pane_picker.is_some());
     }
 
     #[test]
