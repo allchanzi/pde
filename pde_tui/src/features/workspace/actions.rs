@@ -1,17 +1,22 @@
 impl WorkspaceState {
     pub fn refresh_from_external(&mut self) -> Result<()> {
-        self.projects = load_projects()?;
-        self.global_sessions = load_global_sessions();
+        self.replace_projects(load_projects()?);
+        Ok(())
+    }
+
+    fn replace_projects(&mut self, projects: Vec<Project>) {
+        self.projects = projects;
+        self.generation = self.generation.wrapping_add(1);
+        self.detail_cache.clear();
         selection::clamp_selection(&mut self.project_list, self.projects.len());
         selection::clamp_selection(&mut self.global_session_list, self.global_sessions.len());
-        self.refresh_detail()?;
-        Ok(())
+        self.refresh_detail(true);
     }
 
     fn refresh_all(&mut self) -> Result<Effect> {
         self.refresh_from_external()?;
         Ok(Effect::Message(
-            "Refreshed projects, workspaces and sessions".into(),
+            "Reload requested for projects, workspaces and sessions".into(),
         ))
     }
 
@@ -19,11 +24,8 @@ impl WorkspaceState {
         Effect::Suspend(ExternalCommand::PdeUpdate(vec![]))
     }
 
-    fn refresh_detail(&mut self) -> Result<()> {
-        self.detail = self
-            .selected_project()
-            .map(|project| inspect_project(&self.root, &project.slug))
-            .transpose()?;
+    fn apply_detail(&mut self, detail: Option<ProjectInspect>) {
+        self.detail = detail;
         let workspace_len = self.workspace_rows().len();
         selection::clamp_selection(&mut self.workspace_list, workspace_len);
         self.project_sessions = self
@@ -32,7 +34,6 @@ impl WorkspaceState {
             .map(active_project_sessions)
             .unwrap_or_default();
         selection::clamp_selection(&mut self.project_session_list, self.project_sessions.len());
-        Ok(())
     }
 
     fn add_action(&self) -> Effect {

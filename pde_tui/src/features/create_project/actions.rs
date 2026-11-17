@@ -114,7 +114,17 @@ impl CreateProjectState {
     }
 
     fn handle_new_pane_picker_key(&mut self, key: KeyCode) -> Effect {
+        let labels = self.available_presets()
+            .iter()
+            .map(|choice| format!("{} {}", choice.label(), choice.description()))
+            .collect::<Vec<_>>();
+        if let Some(picker) = &mut self.new_pane_picker
+            && picker.search.handle_key(key, &mut picker.selected, &labels)
+        {
+            return Effect::None;
+        }
         match key {
+            KeyCode::Char('?') => Effect::ToggleHelp,
             KeyCode::Esc => {
                 self.new_pane_picker = None;
                 Effect::None
@@ -128,6 +138,7 @@ impl CreateProjectState {
                 Effect::None
             }
             KeyCode::Enter => self.apply_new_pane_picker_choice(),
+            KeyCode::Char('f') => self.apply_new_pane_choice(NewPaneChoice::FullDevelopment),
             KeyCode::Char('e') => self.apply_new_pane_choice(NewPaneChoice::EditorTab),
             KeyCode::Char('i') => self.apply_new_pane_choice(NewPaneChoice::IdeTab),
             KeyCode::Char('g') => self.apply_new_pane_choice(NewPaneChoice::GitTab),
@@ -156,6 +167,7 @@ impl CreateProjectState {
     fn apply_new_pane_picker_choice(&mut self) -> Effect {
         let selected = self
             .new_pane_picker
+            .as_ref()
             .map(|picker| picker.selected)
             .unwrap_or_default();
         self.apply_new_pane_choice(self.available_presets()[selected])
@@ -167,6 +179,13 @@ impl CreateProjectState {
         }
         self.new_pane_picker = None;
         match choice {
+            NewPaneChoice::FullDevelopment => {
+                self.layout = full_development_layout();
+                self.selected_tab = 0;
+                self.selected_row = 0;
+                self.selected_pane = 0;
+                Effect::Message("Applied full-development layout (8 tabs)".into())
+            }
             NewPaneChoice::EmptyPane => {
                 self.add_window();
                 Effect::Message("Added empty tab".into())
@@ -183,7 +202,7 @@ impl CreateProjectState {
     }
 
     fn open_new_pane_picker(&mut self) -> Effect {
-        self.new_pane_picker = Some(NewPanePickerState { selected: 0 });
+        self.new_pane_picker = Some(NewPanePickerState::default());
         Effect::None
     }
 

@@ -1294,6 +1294,7 @@ def print_project_inspect_json(project: Project) -> None:
                     "capabilities": project.capabilities,
                 },
                 "rows": rows,
+                "sessions": {"tmux": tmux_sessions, "zellij": zellij_sessions},
             }
         )
     )

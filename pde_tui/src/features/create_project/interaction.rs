@@ -12,6 +12,9 @@ impl CreateProjectState {
             selected_multiplexer: 0,
             available_rtui: command_available("rtui"),
             available_pantsui: command_available("pantsui"),
+            available_full_development: ["nvim", "fleetui", "gtui", "lazygit", "rtui", "pantsui", "lazydocker"]
+                .into_iter()
+                .all(command_available),
             enable_rtui: capabilities_enabled && command_available("rtui"),
             enable_pantsui: capabilities_enabled && command_available("pantsui"),
             selected_capability: CapabilityChoice::Rtui,
@@ -59,6 +62,10 @@ impl CreateProjectState {
     pub fn status_label(&self) -> &'static str {
         if self.confirm != ConfirmState::Editing {
             "CONFIRM"
+        } else if self.new_pane_picker.as_ref()
+            .is_some_and(|picker| picker.search.input().is_some())
+        {
+            "SEARCH"
         } else if self.in_text_field()
             || (self.field == Field::Layout && self.layout_mode == LayoutEditMode::EditCommand)
         {
@@ -118,6 +125,7 @@ impl CreateProjectState {
             }
             KeyCode::Char('?') if !self.in_text_field() => Effect::ToggleHelp,
             KeyCode::Esc => self.request_close(),
+            KeyCode::Char('q') if !self.in_text_field() => self.request_close(),
             KeyCode::Enter if self.field == Field::Layout => self.request_confirmation(),
             KeyCode::Enter | KeyCode::Tab => self.next_field(),
             KeyCode::BackTab => {

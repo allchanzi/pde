@@ -1,26 +1,34 @@
 impl WorkspaceState {
     pub fn load(root: PathBuf) -> Result<Self> {
         let projects = load_projects()?;
+        let loader = BackgroundLoader::start(root.clone())?;
         let mut state = Self {
             root,
             projects,
             detail: None,
-            global_sessions: load_global_sessions(),
+            global_sessions: vec![],
             project_sessions: vec![],
             focus: FocusPane::Projects,
             project_list: ListState::default(),
             workspace_list: ListState::default(),
             global_session_list: ListState::default(),
             project_session_list: ListState::default(),
-            pending_g: false,
+            nav: NavKeys::default(),
+            search_input: None,
+            search_query: String::new(),
             page_rows: 1,
+            loader,
+            detail_cache: HashMap::new(),
+            generation: 0,
+            detail_loading: false,
+            detail_error: None,
         };
         selection::select_first_when_present(&mut state.project_list, state.projects.len());
         selection::select_first_when_present(
             &mut state.global_session_list,
             state.global_sessions.len(),
         );
-        state.refresh_detail()?;
+        state.refresh_detail(true);
         Ok(state)
     }
 
@@ -72,9 +80,11 @@ impl WorkspaceState {
                 theme.shortcut_line("[?] toggle help"),
                 theme.shortcut_line("[Tab/Shift+Tab] next/previous pane"),
                 theme.shortcut_line("[j/k] / [↓/↑] select next/previous item"),
-                theme.shortcut_line("[h/l] / [Alt+h/l] focus left/right"),
-                theme.shortcut_line("[Alt+j/k] / [Alt+s/w] focus down/up"),
-                theme.shortcut_line("[g/G] / [Home/End] first/last item"),
+                theme.shortcut_line("[h/l] focus left/right • [1-4] jump to a pane"),
+                theme.shortcut_line("[Ctrl+h/j/k/l] focus in that direction"),
+                theme.shortcut_line("[gg/G] / [Home/End] first/last item"),
+                theme.shortcut_line("[/] search, smartcase • [n/N] next/previous match"),
+                theme.shortcut_line("[Ctrl+c] cancel what is open or pending"),
                 theme.shortcut_line("[Ctrl+d/u] half page • [Ctrl+f/b] full page"),
                 theme.shortcut_line("[r]efresh"),
                 theme.shortcut_line("[u]pdate PDE, rtui and pantsui"),

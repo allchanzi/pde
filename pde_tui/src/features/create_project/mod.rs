@@ -9,10 +9,13 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Position, Rect},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use crate::{app::Effect, shared::ui::theme::UiTheme};
+use crate::{
+    app::Effect,
+    shared::{selection::PickerSearch, ui::theme::UiTheme},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Field {
@@ -93,6 +96,7 @@ enum CapabilityChoice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NewPaneChoice {
     EmptyPane,
+    FullDevelopment,
     EditorTab,
     IdeTab,
     GitTab,
@@ -103,13 +107,15 @@ enum NewPaneChoice {
     MonitorTab,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 struct NewPanePickerState {
     selected: usize,
+    search: PickerSearch,
 }
 
-const NEW_PANE_CHOICES: [NewPaneChoice; 9] = [
+const NEW_PANE_CHOICES: [NewPaneChoice; 10] = [
     NewPaneChoice::EmptyPane,
+    NewPaneChoice::FullDevelopment,
     NewPaneChoice::EditorTab,
     NewPaneChoice::IdeTab,
     NewPaneChoice::GitTab,
@@ -132,6 +138,7 @@ pub struct CreateProjectState {
     selected_multiplexer: usize,
     available_rtui: bool,
     available_pantsui: bool,
+    available_full_development: bool,
     enable_rtui: bool,
     enable_pantsui: bool,
     selected_capability: CapabilityChoice,
@@ -203,6 +210,119 @@ fn command_available(command: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preset_search_works_in_create_and_edit_without_firing_shortcut_letters() {
+        for edit_slug in [None, Some("existing-project".to_string())] {
+            let mut state = CreateProjectState::new();
+            state.edit_slug = edit_slug;
+            state.available_full_development = true;
+            state.field = Field::Layout;
+            let original = state.layout.clone();
+            let press = |state: &mut CreateProjectState, code| {
+                state
+                    .handle_key(KeyEvent::new(code, crossterm::event::KeyModifiers::NONE))
+                    .unwrap()
+            };
+            press(&mut state, KeyCode::Char('o'));
+            press(&mut state, KeyCode::Char('/'));
+            assert_eq!(state.status_label(), "SEARCH");
+            for character in "full-development".chars() {
+                assert_eq!(press(&mut state, KeyCode::Char(character)), Effect::None);
+                assert_eq!(state.layout, original);
+                assert!(state.new_pane_picker.is_some());
+            }
+            assert_eq!(press(&mut state, KeyCode::Enter), Effect::None);
+            assert_eq!(state.status_label(), "NORMAL");
+            assert_eq!(state.layout, original);
+            let index = state.new_pane_picker.as_ref().unwrap().selected;
+            assert_eq!(
+                state.available_presets()[index],
+                NewPaneChoice::FullDevelopment
+            );
+            press(&mut state, KeyCode::Enter);
+            assert!(state.new_pane_picker.is_none());
+            assert_eq!(state.layout, full_development_layout());
+        }
+    }
+
+    #[test]
+    fn preset_search_esc_keeps_the_picker_open_and_descriptions_are_searchable() {
+        let mut state = CreateProjectState::new();
+        state.available_full_development = true;
+        state.field = Field::Layout;
+        state.open_new_pane_picker();
+        for character in "/jq? /".chars() {
+            assert_eq!(
+                state.handle_new_pane_picker_key(KeyCode::Char(character)),
+                Effect::None
+            );
+        }
+        assert_eq!(
+            state.new_pane_picker.as_ref().unwrap().search.input(),
+            Some("jq? /")
+        );
+        assert_eq!(state.handle_new_pane_picker_key(KeyCode::Esc), Effect::None);
+        assert!(state.new_pane_picker.is_some());
+        for character in "/8 development".chars() {
+            state.handle_new_pane_picker_key(KeyCode::Char(character));
+        }
+        state.handle_new_pane_picker_key(KeyCode::Enter);
+        let index = state.new_pane_picker.as_ref().unwrap().selected;
+        assert_eq!(
+            state.available_presets()[index],
+            NewPaneChoice::FullDevelopment
+        );
+        state.handle_new_pane_picker_key(KeyCode::Esc);
+        assert!(state.new_pane_picker.is_none());
+        assert_eq!(state.field, Field::Layout);
+        assert_eq!(state.layout.len(), 1);
+    }
+
+    #[test]
+    fn preset_picker_scrolls_to_search_results_and_displays_no_match_feedback() {
+        let mut state = CreateProjectState::new();
+        state.field = Field::Layout;
+        state.available_pantsui = true;
+        state.open_new_pane_picker();
+        for character in "/pants".chars() {
+            state.handle_new_pane_picker_key(KeyCode::Char(character));
+        }
+        state.handle_new_pane_picker_key(KeyCode::Enter);
+        let theme = UiTheme::load(Path::new("/nonexistent-theme"));
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(70, 16)).unwrap();
+        terminal
+            .draw(|frame| render(frame, frame.area(), &state, &theme, true, ""))
+            .unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("PantsUI tab"), "{text}");
+        assert!(text.contains("/pants"), "{text}");
+        assert!(text.contains("[/] search"), "{text}");
+        let selected = state.new_pane_picker.as_ref().unwrap().selected;
+        for character in "/missing-preset".chars() {
+            state.handle_new_pane_picker_key(KeyCode::Char(character));
+        }
+        state.handle_new_pane_picker_key(KeyCode::Enter);
+        terminal
+            .draw(|frame| render(frame, frame.area(), &state, &theme, true, ""))
+            .unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("No match for \"missing-preset\""), "{text}");
+        assert_eq!(state.new_pane_picker.as_ref().unwrap().selected, selected);
+    }
 
     #[test]
     fn multiplexer_choice_is_submitted_and_required() {
@@ -280,7 +400,83 @@ mod tests {
         assert_eq!(press(&mut state, KeyCode::Esc), Effect::None);
         assert_eq!(state.confirm, ConfirmState::Editing);
         press(&mut state, KeyCode::Esc);
-        assert_eq!(press(&mut state, KeyCode::Char('y')), Effect::CloseCreateProject);
+        assert_eq!(
+            press(&mut state, KeyCode::Char('y')),
+            Effect::CloseCreateProject
+        );
+    }
+
+    #[test]
+    fn full_development_replaces_layout_when_creating_and_editing() {
+        for edit_slug in [None, Some("existing-project".to_string())] {
+            let mut state = CreateProjectState::new();
+            state.edit_slug = edit_slug.clone();
+            state.available_full_development = true;
+            state.multiplexers = vec!["tmux".into()];
+            state.field = Field::Layout;
+            state.add_preset_tab(ide_tab());
+            let press = |state: &mut CreateProjectState, code| {
+                state
+                    .handle_key(KeyEvent::new(code, crossterm::event::KeyModifiers::NONE))
+                    .unwrap()
+            };
+            press(&mut state, KeyCode::Char('o'));
+            press(&mut state, KeyCode::Char('f'));
+            assert!(state.new_pane_picker.is_none());
+            assert_eq!(
+                (state.selected_tab, state.selected_row, state.selected_pane),
+                (0, 0, 0)
+            );
+            let Effect::CreateProjectSubmit(spec) = state.submit() else {
+                panic!("expected submission")
+            };
+            assert_eq!(spec.edit_slug, edit_slug);
+            let tabs: Vec<_> = spec
+                .layout
+                .iter()
+                .map(|tab| {
+                    assert_eq!(tab.rows.len(), 1);
+                    assert_eq!(tab.rows[0].panes.len(), 1);
+                    (tab.name.as_str(), tab.rows[0].panes[0].command.as_str())
+                })
+                .collect();
+            assert_eq!(
+                tabs,
+                [
+                    ("terminal", ""),
+                    ("nvim", "nvim ."),
+                    ("fleetui", "fleetui"),
+                    ("gtui", "gtui"),
+                    ("lazygit", "lazygit"),
+                    ("rtui", "rtui ."),
+                    ("pantsui", "pantsui"),
+                    ("lazydocker", "lazydocker"),
+                ]
+            );
+            assert_ne!(state.draft(), state.baseline);
+            press(&mut state, KeyCode::Char('o'));
+            press(&mut state, KeyCode::Char('f'));
+            assert_eq!(state.layout, spec.layout);
+        }
+    }
+
+    #[test]
+    fn full_development_requires_all_tools() {
+        let mut state = CreateProjectState::new();
+        state.available_full_development = false;
+        let layout = state.layout.clone();
+        state.open_new_pane_picker();
+        assert!(
+            !state
+                .available_presets()
+                .contains(&NewPaneChoice::FullDevelopment)
+        );
+        assert!(matches!(
+            state.handle_new_pane_picker_key(KeyCode::Char('f')),
+            Effect::Message(_)
+        ));
+        assert_eq!(state.layout, layout);
+        assert!(state.new_pane_picker.is_some());
     }
 
     #[test]

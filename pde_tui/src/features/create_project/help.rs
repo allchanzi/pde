@@ -59,8 +59,12 @@ impl CreateProjectState {
         if self.pending_delete {
             return "Delete: [p]ane / [r]ow / [w] whole tab • [Esc] cancel";
         }
-        if self.new_pane_picker.is_some() {
-            return "[Enter] add preset • [↑/↓] select • [Esc] back";
+        if let Some(picker) = &self.new_pane_picker {
+            return if picker.search.input().is_some() {
+                "Type search • [Enter] find • [Esc] cancel search"
+            } else {
+                "[Enter] add preset • [j/k/↑/↓] select • [/] search • [n/N] matches • [Esc] back • [?] help"
+            };
         }
         if self.field == Field::Layout {
             return match self.layout_mode {
@@ -75,6 +79,16 @@ impl CreateProjectState {
     }
 
     pub fn active_help_lines(&self, theme: &UiTheme) -> Vec<Line<'static>> {
+        if self.new_pane_picker.is_some() {
+            return vec![
+                Line::from(Span::styled("Tab preset picker", theme.help_title())),
+                theme.shortcut_line(self.footer_help()),
+                theme.shortcut_line("[/] search preset names and descriptions; [Enter] finds a match."),
+                theme.shortcut_line("Search uses smartcase; [n/N] visits matches and wraps at either end."),
+                theme.shortcut_line("[Esc] leaves search first, then closes the picker."),
+                theme.shortcut_line("Outside search, a preset's shortcut adds it immediately."),
+            ];
+        }
         if self.confirm == ConfirmState::ConfirmCreate {
             return vec![
                 Line::from(Span::styled(if self.edit_slug.is_some() { "Save project changes?" } else { "Create project?" }, theme.help_title())),
@@ -111,6 +125,7 @@ impl CreateProjectState {
             theme.shortcut_line("[d]elete selected [r]ow"),
             theme.shortcut_line("[d]elete selected [p]ane"),
             theme.shortcut_line("Presets: editor, ide, git, docker, rtui, pantsui, k9s, monitor"),
+            theme.shortcut_line("[o] then [f]: full-development (replaces layout with 8 tabs)"),
             theme.shortcut_line("[h/l] previous/next pane"),
             theme.shortcut_line("[j/k] next/previous row"),
             theme.shortcut_line("[Left bracket/Right bracket] previous/next tab"),

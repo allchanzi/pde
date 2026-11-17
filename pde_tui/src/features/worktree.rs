@@ -1,6 +1,6 @@
 use crate::{
     app::Effect,
-    shared::{process::ExternalCommand, ui::theme::UiTheme},
+    shared::{process::ExternalCommand, selection::PickerSearch, ui::theme::UiTheme},
 };
 use anyhow::{Result, bail};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -29,6 +29,7 @@ pub struct WorktreeState {
     name: String,
     message: String,
     pending_g: bool,
+    search: PickerSearch,
 }
 
 impl WorktreeState {
@@ -65,6 +66,7 @@ impl WorktreeState {
             name: String::new(),
             message: String::new(),
             pending_g: false,
+            search: PickerSearch::default(),
         })
     }
 
@@ -86,6 +88,17 @@ impl WorktreeState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Result<Effect> {
+        if self.step == Step::Branch {
+            let mut selected = self.selection.selected().unwrap_or(0);
+            if self
+                .search
+                .handle_key(key.code, &mut selected, &self.branches)
+            {
+                self.selection.select(Some(selected));
+                self.pending_g = false;
+                return Ok(Effect::None);
+            }
+        }
         if self.step == Step::Branch && self.pending_g {
             self.pending_g = false;
             if key.code == KeyCode::Char('g') {
@@ -98,7 +111,7 @@ impl WorktreeState {
         }
         Ok(match self.step {
             Step::Branch => match key.code {
-                KeyCode::Esc => Effect::CloseCreateProject,
+                KeyCode::Esc | KeyCode::Char('q') => Effect::CloseCreateProject,
                 KeyCode::Down | KeyCode::Char('j') => {
                     let index =
                         (self.selection.selected().unwrap_or(0) + 1).min(self.branches.len() - 1);
@@ -182,6 +195,9 @@ impl WorktreeState {
     }
 
     pub fn status_label(&self) -> &'static str {
+        if self.step == Step::Branch && self.search.input().is_some() {
+            return "SEARCH";
+        }
         match self.step {
             Step::Branch => "NORMAL",
             Step::Name => "INSERT",
@@ -190,9 +206,12 @@ impl WorktreeState {
     }
 
     fn shortcuts(&self) -> &'static str {
+        if self.step == Step::Branch && self.search.input().is_some() {
+            return "Type search • [Enter] find • [Esc] cancel search";
+        }
         match self.step {
             Step::Branch => {
-                "[↑/↓] / [j/k] select • [gg/G] first/last • [Enter] continue • [Esc] cancel • [?] help"
+                "[j/k/↑/↓] select • [gg/G] first/last • [/] search • [n/N] matches • [Enter] continue • [Esc] cancel • [?] help"
             }
             Step::Name => "Type branch name • [Enter] review • [Esc] back",
             Step::Confirm => "Create and open worktree? [y]es / [n]o • [?] help",
@@ -202,6 +221,9 @@ impl WorktreeState {
     pub fn help(&self, theme: &UiTheme) -> Vec<Line<'static>> {
         vec![
             theme.shortcut_line(self.shortcuts()),
+            theme.shortcut_line(
+                "Search uses smartcase; [n/N] visits matches and wraps at either end.",
+            ),
             theme.shortcut_line("Source branch is the starting point for the new branch."),
             theme.shortcut_line("The new worktree opens in the project's configured multiplexer."),
         ]
@@ -279,19 +301,23 @@ pub fn render(
             ));
         }
     }
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Worktree / shortcuts ")
+        .border_style(theme.focused_border());
+    let [status, shortcuts] =
+        Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(block.inner(footer));
+    frame.render_widget(block, footer);
+    if state.step == Step::Branch {
+        state
+            .search
+            .render(frame, status, theme.help_title(), cursor);
+    } else {
+        frame.render_widget(Paragraph::new(state.message.as_str()), status);
+    }
     frame.render_widget(
-        Paragraph::new(vec![
-            theme.shortcut_line(&state.message),
-            theme.shortcut_line(state.shortcuts()),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Worktree / shortcuts ")
-                .border_style(theme.focused_border()),
-        )
-        .wrap(Wrap { trim: true }),
-        footer,
+        Paragraph::new(theme.shortcut_line(state.shortcuts())).wrap(Wrap { trim: true }),
+        shortcuts,
     );
 }
 
@@ -310,9 +336,135 @@ fn parse_branches(raw: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
+impl WorktreeState {
+    pub(crate) fn fixture(new: bool) -> Self {
+        Self {
+            slug: "project".into(),
+            path: ".".into(),
+            branches: vec!["main".into(), "feature/one".into(), "Feature/Two".into()],
+            selection: ListState::default().with_selected(Some(0)),
+            new,
+            step: if new { Step::Confirm } else { Step::Branch },
+            name: "feature/new".into(),
+            message: String::new(),
+            pending_g: false,
+            search: PickerSearch::default(),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
+
+    #[test]
+    fn branch_search_selects_the_original_branch_without_opening_on_search_enter() {
+        for new in [false, true] {
+            let mut state = WorktreeState::fixture(new);
+            state.step = Step::Branch;
+            let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+            state.handle_key(key(KeyCode::Char('/'))).unwrap();
+            assert_eq!(state.status_label(), "SEARCH");
+            for character in "feature/".chars() {
+                assert_eq!(
+                    state.handle_key(key(KeyCode::Char(character))).unwrap(),
+                    Effect::None
+                );
+            }
+            assert_eq!(state.handle_key(key(KeyCode::Enter)).unwrap(), Effect::None);
+            assert_eq!(state.step, Step::Branch);
+            assert_eq!(state.branch(), "feature/one");
+            state.handle_key(key(KeyCode::Char('n'))).unwrap();
+            assert_eq!(state.branch(), "Feature/Two");
+            state.handle_key(key(KeyCode::Char('N'))).unwrap();
+            assert_eq!(state.branch(), "feature/one");
+            if new {
+                state.handle_key(key(KeyCode::Enter)).unwrap();
+                assert_eq!(state.step, Step::Name);
+                state.handle_key(key(KeyCode::Enter)).unwrap();
+                assert_eq!(state.step, Step::Confirm);
+            }
+            let effect = state
+                .handle_key(key(if new {
+                    KeyCode::Char('y')
+                } else {
+                    KeyCode::Enter
+                }))
+                .unwrap();
+            let Effect::Suspend(ExternalCommand::Projects(args)) = effect else {
+                panic!("expected the selected branch to open");
+            };
+            assert_eq!(args.last().unwrap(), "feature/one");
+            if new {
+                assert_eq!(args[3], "feature/new");
+                assert_eq!(args[4], "--from");
+            }
+        }
+    }
+
+    #[test]
+    fn search_keys_do_not_close_the_picker_or_toggle_help_and_esc_stays_local() {
+        let mut state = WorktreeState::fixture(false);
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        state.pending_g = true;
+        for character in "/q?j/n".chars() {
+            assert_eq!(
+                state.handle_key(key(KeyCode::Char(character))).unwrap(),
+                Effect::None
+            );
+        }
+        assert_eq!(state.search.input(), Some("q?j/n"));
+        assert!(!state.pending_g);
+        assert_eq!(state.handle_key(key(KeyCode::Esc)).unwrap(), Effect::None);
+        assert_eq!(state.status_label(), "NORMAL");
+        assert_eq!(state.selection.selected(), Some(0));
+        assert_eq!(
+            state.handle_key(key(KeyCode::Esc)).unwrap(),
+            Effect::CloseCreateProject
+        );
+    }
+
+    #[test]
+    fn branch_picker_shows_the_query_and_search_hint_in_a_small_terminal() {
+        let mut state = WorktreeState::fixture(false);
+        for character in "/missing".chars() {
+            state
+                .handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE))
+                .unwrap();
+        }
+        let theme = UiTheme::load(std::path::Path::new("/nonexistent-theme"));
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(60, 12)).unwrap();
+        terminal
+            .draw(|frame| render(frame, frame.area(), &mut state, &theme, true))
+            .unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("/missing"), "{text}");
+        assert!(text.contains("[Esc] cancel search"), "{text}");
+        state
+            .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            .unwrap();
+        terminal
+            .draw(|frame| render(frame, frame.area(), &mut state, &theme, true))
+            .unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("No match for \"missing\""), "{text}");
+        assert_eq!(state.branch(), "main");
+    }
+
     #[test]
     fn branches_merge_local_and_origin_without_head() {
         assert_eq!(
@@ -334,6 +486,7 @@ mod tests {
             name: "feature/new".into(),
             message: String::new(),
             pending_g: false,
+            search: PickerSearch::default(),
         };
         assert_eq!(
             state
@@ -365,6 +518,7 @@ mod tests {
             name: "feature/new".into(),
             message: String::new(),
             pending_g: false,
+            search: PickerSearch::default(),
         };
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).unwrap();
@@ -395,6 +549,7 @@ mod tests {
             name: String::new(),
             message: String::new(),
             pending_g: false,
+            search: PickerSearch::default(),
         };
         let key = |c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
         state.handle_key(key('g')).unwrap();

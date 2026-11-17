@@ -208,7 +208,7 @@ local function render_entries(root, addresses)
   local entries = {}
   local lines = {
     "󰙅 Pants Tests",
-    "  <Enter>/l toggle/open   h collapse   r run   o output   q close",
+    "  [Enter/l] toggle/open   [h] collapse   [r]un   [o]utput   [q] close",
     render_summary(),
     "",
     "󰉋 " .. vim.fs.basename(root) .. "/",

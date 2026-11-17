@@ -896,7 +896,7 @@ dependencies = [
 [[package]]
 name = "panels"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers#6d733858220b3c73acb06e7e71206736b4dec858"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f#d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f"
 dependencies = [
  "ratatui",
 ]
@@ -926,7 +926,7 @@ dependencies = [
 
 [[package]]
 name = "pde-tui"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -936,6 +936,7 @@ dependencies = [
  "rustline",
  "serde",
  "serde_json",
+ "tuikit",
  "whichkey",
 ]
 
@@ -1281,7 +1282,7 @@ dependencies = [
 [[package]]
 name = "rustline"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers#6d733858220b3c73acb06e7e71206736b4dec858"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f#d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f"
 dependencies = [
  "ratatui",
 ]
@@ -1636,6 +1637,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
 
 [[package]]
+name = "tuikit"
+version = "0.1.0"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f#d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f"
+dependencies = [
+ "crossterm",
+ "ratatui",
+]
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1843,7 +1853,7 @@ dependencies = [
 [[package]]
 name = "whichkey"
 version = "0.1.0"
-source = "git+https://github.com/allchanzi/tui-helpers#6d733858220b3c73acb06e7e71206736b4dec858"
+source = "git+https://github.com/allchanzi/tui-helpers?rev=d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f#d8e7bdb6bc5f88d10e7505e7763ac2a4aa30bf0f"
 dependencies = [
  "ratatui",
 ]

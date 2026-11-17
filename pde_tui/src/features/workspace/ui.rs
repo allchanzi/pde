@@ -64,6 +64,17 @@ fn render_workspaces(
         .map(workspaces_title)
         .unwrap_or_else(|| "Selected / Workspaces".into());
     let title = format!("[3] {title}");
+    if state.workspace_rows().is_empty()
+        && let Some(status) = state.detail_status()
+    {
+        frame.render_widget(
+            Paragraph::new(status)
+                .block(theme.panel_block(title, state.focus == FocusPane::Workspaces))
+                .wrap(Wrap { trim: true }),
+            area,
+        );
+        return;
+    }
     let rows = state
         .workspace_rows()
         .iter()
@@ -101,10 +112,11 @@ fn render_project_sessions(
     theme: &UiTheme,
 ) {
     let title = state
-        .detail
-        .as_ref()
-        .map(|detail| format!("[4] Selected / Sessions for {}", detail.project.slug))
+        .selected_project()
+        .map(|project| format!("[4] Selected / Sessions for {}", project.slug))
         .unwrap_or_else(|| "[4] Selected / Sessions".into());
+    let empty_text = state.detail_status()
+        .unwrap_or("No active tmux/zellij sessions for selected project.").to_string();
     render_session_panel(
         frame,
         area,
@@ -112,7 +124,7 @@ fn render_project_sessions(
         state.focus == FocusPane::ProjectSessions,
         &state.project_sessions,
         &mut state.project_session_list,
-        "No active tmux/zellij sessions for selected project.",
+        &empty_text,
         theme,
     );
 }
@@ -126,7 +138,7 @@ fn render_session_panel(
     focused: bool,
     sessions: &[SessionRow],
     list_state: &mut ListState,
-    empty_text: &'static str,
+    empty_text: &str,
     theme: &UiTheme,
 ) {
     let title = title.into();

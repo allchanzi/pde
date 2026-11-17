@@ -38,8 +38,8 @@ pub fn render(
         render_text_field_cursor(frame, columns[0], state);
     }
     render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
-    if let Some(picker) = state.new_pane_picker {
-        render_new_pane_picker(frame, area, picker, state, theme);
+    if let Some(picker) = &state.new_pane_picker {
+        render_new_pane_picker(frame, area, picker, state, theme, cursor_enabled);
     }
 }
 
@@ -113,39 +113,47 @@ fn render_command_cursor(
 fn render_new_pane_picker(
     frame: &mut ratatui::Frame<'_>,
     area: Rect,
-    picker: NewPanePickerState,
+    picker: &NewPanePickerState,
     state: &CreateProjectState,
     theme: &UiTheme,
+    cursor_enabled: bool,
 ) {
-    let popup = centered_rect(68, 58, area);
+    let popup = centered_rect(84, 80, area);
     frame.render_widget(Clear, popup);
-    let mut lines = vec![
-        Line::from(Span::styled("New tab / preset", theme.help_title())),
-        Line::from(""),
-
-        Line::from("Only installed tools are listed. Use the key beside a preset."),
-        Line::from(""),
-    ];
-    for (index, choice) in state.available_presets().iter().copied().enumerate() {
-        let marker = if index == picker.selected { ">" } else { " " };
-        let mut line = theme.shortcut_line(&format!(
-            "{marker} {:<7} {:<13} {}",
-            format!("[{}]", choice.key()), choice.label(), choice.description()
-        ));
-        if index == picker.selected {
-            line.style = theme.selected();
-        }
-        lines.push(line);
-    }
-
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(" Add ")
+        .title(" New tab / preset ")
         .border_style(theme.focused_border());
-    let paragraph = Paragraph::new(lines)
-        .block(block)
-        .wrap(Wrap { trim: false });
-    frame.render_widget(paragraph, popup);
+    let [info, list, search, shortcuts] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(1),
+        Constraint::Length(1),
+        Constraint::Length(2),
+    ])
+    .areas(block.inner(popup));
+    frame.render_widget(block, popup);
+    frame.render_widget(Paragraph::new("Only installed tools are listed."), info);
+    let items = state.available_presets()
+        .iter()
+        .map(|choice| {
+            ListItem::new(theme.shortcut_line(&format!(
+                "{:<7} {:<16} {}",
+                format!("[{}]", choice.key()), choice.label(), choice.description()
+            )))
+        })
+        .collect::<Vec<_>>();
+    frame.render_stateful_widget(
+        List::new(items)
+            .highlight_style(theme.selected())
+            .highlight_symbol("> "),
+        list,
+        &mut ListState::default().with_selected(Some(picker.selected)),
+    );
+    picker.search.render(frame, search, theme.help_title(), cursor_enabled);
+    frame.render_widget(
+        Paragraph::new(theme.shortcut_line(state.footer_help())).wrap(Wrap { trim: true }),
+        shortcuts,
+    );
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

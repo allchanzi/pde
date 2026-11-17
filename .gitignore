@@ -82,3 +82,4 @@ presets/allc/dotfiles/zsh/shell/local.zsh
 __pycache__/
 *.py[cod]
 *$py.class
+.pantsui-cache/
