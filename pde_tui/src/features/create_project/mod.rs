@@ -212,6 +212,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tmux_layout_targets_pane_ids_not_numbers() {
+        let mut grid = command_tab("grid", "a");
+        grid.rows[0].panes.push(LayoutPane {
+            ratio: 1,
+            command: "b".into(),
+        });
+        grid.rows.push(grid.rows[0].clone());
+        let script = tmux_layout(&[command_tab("one", "x"), ide_tab(), grid]).join("\n");
+        // Numbers would break when the user's base-index or pane-base-index is 0.
+        assert!(!script.contains("\"$session\":1"), "{script}");
+        assert!(!script.contains("\"$session\":2"), "{script}");
+        assert_eq!(
+            script.matches("tmux send-keys -t \"$pane\"").count(),
+            1 + 2 + 4
+        );
+        assert_eq!(script.matches("split-window").count(), 2 + 3);
+        assert!(script.contains("tmux select-window -t \"$first\""));
+    }
+
+    #[test]
     fn preset_search_works_in_create_and_edit_without_firing_shortcut_letters() {
         for edit_slug in [None, Some("existing-project".to_string())] {
             let mut state = CreateProjectState::new();

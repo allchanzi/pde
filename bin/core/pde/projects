@@ -652,22 +652,19 @@ def active_zellij_sessions() -> list[str]:
     return sorted({line.strip() for line in completed.stdout.splitlines() if line.strip()})
 
 
-def configure_tmux_window(
-    session_name: str,
-    index: int,
-    tab: TabSpec,
-    project_dir: Path,
-) -> None:
-    """Configure tmux window contents."""
+TMUX_PRINT_PANE = ["-P", "-F", "#{pane_id}"]
 
-    target = f"{session_name}:{index}"
+
+def configure_tmux_window(pane: str, tab: TabSpec, project_dir: Path) -> None:
+    """Configure tmux window contents, addressed by pane id (base-index agnostic)."""
+
     if tab.split_commands:
-        run_command(["tmux", "split-window", "-h", "-t", target, "-c", str(project_dir)])
-        run_command(["tmux", "send-keys", "-t", f"{target}.1", tab.split_commands[0], "C-m"])
-        run_command(["tmux", "send-keys", "-t", f"{target}.2", tab.split_commands[1], "C-m"])
+        second = capture_command(["tmux", "split-window", "-h", *TMUX_PRINT_PANE, "-t", pane, "-c", str(project_dir)])
+        run_command(["tmux", "send-keys", "-t", pane, tab.split_commands[0], "C-m"])
+        run_command(["tmux", "send-keys", "-t", second, tab.split_commands[1], "C-m"])
         return
     if tab.command:
-        run_command(["tmux", "send-keys", "-t", target, tab.command, "C-m"])
+        run_command(["tmux", "send-keys", "-t", pane, tab.command, "C-m"])
 
 
 def run_custom_tmux_layout(project: Project, session_name: str, project_dir: Path) -> bool:
@@ -711,35 +708,16 @@ def open_in_tmux(
     if run_custom_tmux_layout(project, session_name, project_dir):
         os.execvp("tmux", attach_command)
     first_tab, *other_tabs = tabs
-    run_command(
-        [
-            "tmux",
-            "new-session",
-            "-d",
-            "-s",
-            session_name,
-            "-n",
-            first_tab.name,
-            "-c",
-            str(project_dir),
-        ]
+    first_pane = capture_command(
+        ["tmux", "new-session", "-d", *TMUX_PRINT_PANE, "-s", session_name, "-n", first_tab.name, "-c", str(project_dir)]
     )
-    configure_tmux_window(session_name, 1, first_tab, project_dir)
-    for index, tab in enumerate(other_tabs, start=2):
-        run_command(
-            [
-                "tmux",
-                "new-window",
-                "-t",
-                f"{session_name}:{index}",
-                "-n",
-                tab.name,
-                "-c",
-                str(project_dir),
-            ]
+    configure_tmux_window(first_pane, first_tab, project_dir)
+    for tab in other_tabs:
+        pane = capture_command(
+            ["tmux", "new-window", *TMUX_PRINT_PANE, "-t", f"{session_name}:", "-n", tab.name, "-c", str(project_dir)]
         )
-        configure_tmux_window(session_name, index, tab, project_dir)
-    run_command(["tmux", "select-window", "-t", f"{session_name}:1"])
+        configure_tmux_window(pane, tab, project_dir)
+    run_command(["tmux", "select-window", "-t", first_pane])
     os.execvp("tmux", attach_command)
 
 
@@ -1047,6 +1025,14 @@ def show_worktree_origin(path: Path, branch: str) -> None:
     print("origin:   unknown (worktree was created before metadata support)")
 
 
+def remove_worktree(repo: Path, worktree: Path) -> None:
+    """Remove a linked worktree; git itself refuses the main checkout."""
+
+    # No rmtree fallback: when git refuses, the path may be the main checkout.
+    if run_command(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo, check=False).returncode:
+        fail(f"git refused to remove {worktree}; nothing was deleted.")
+
+
 def delete_worktree(path: Path, branch: str) -> None:
     """Delete worktree for branch."""
 
@@ -1055,8 +1041,7 @@ def delete_worktree(path: Path, branch: str) -> None:
         current_path = worktree_default_path(path, branch)
     if not current_path.exists():
         fail(f"No worktree path found for branch '{branch}'.")
-    run_command(["git", "worktree", "remove", "--force", str(current_path)], cwd=path, check=False)
-    shutil.rmtree(current_path, ignore_errors=True)
+    remove_worktree(path, current_path)
     print(f"Removed worktree '{branch}' at {current_path}")
 
 
@@ -1081,8 +1066,7 @@ def project_dir_for_code_open(
         return existing_path, worktree_session_name(project, branch)
 
     if existing_path and force:
-        run_command(["git", "worktree", "remove", "--force", str(existing_path)], cwd=project.path_obj, check=False)
-        shutil.rmtree(existing_path, ignore_errors=True)
+        remove_worktree(project.path_obj, existing_path)
 
     worktree_path = worktree_default_path(project.path_obj, branch)
     origin_ref = ""

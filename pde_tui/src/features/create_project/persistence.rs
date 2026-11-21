@@ -238,63 +238,63 @@ fn zellij_pane(pane: &LayoutPane, percentage: u16, indent: usize) -> Vec<String>
 fn write_tmux_layout(slug: &str, tabs: &[LayoutTab]) -> Result<()> {
     let path = home().join(".config/tmux").join(format!("{slug}.sh"));
     fs::create_dir_all(path.parent().unwrap())?;
+    fs::write(path, tmux_layout(tabs).join("\n") + "\n")?;
+    Ok(())
+}
+
+/// Panes are addressed by the ids tmux prints (`-P -F`), never by number, so the
+/// script works whatever `base-index` / `pane-base-index` the user has set.
+fn tmux_layout(tabs: &[LayoutTab]) -> Vec<String> {
+    const PRINT: &str = "-P -F '#{pane_id}'";
     let mut lines = vec![
         "setup_tmux_layout() {".to_string(),
         "  local session=\"$1\"".into(),
         "  local project_dir=\"$2\"".into(),
+        "  local pane first".into(),
     ];
     for (idx, tab) in tabs.iter().enumerate() {
-        let window = idx + 1;
+        let name = shell_quote(&tab.name);
         if idx == 0 {
             lines.push(format!(
-                "  tmux new-session -d -s \"$session\" -n {} -c \"$project_dir\"",
-                shell_quote(&tab.name)
+                "  pane=$(tmux new-session -d {PRINT} -s \"$session\" -n {name} -c \"$project_dir\")"
             ));
+            lines.push("  first=\"$pane\"".into());
         } else {
             lines.push(format!(
-                "  tmux new-window -t \"$session\":{window} -n {} -c \"$project_dir\"",
-                shell_quote(&tab.name)
+                "  pane=$(tmux new-window {PRINT} -t \"$session\": -n {name} -c \"$project_dir\")"
             ));
         }
         if tab.preset == Some(LayoutPreset::Ide) {
-            lines.extend(tmux_ide_tab(tab, window));
+            lines.extend(tmux_ide_tab(tab));
             continue;
         }
-        let mut pane_index = 1usize;
         for (row_idx, row) in tab.rows.iter().enumerate() {
-            if row_idx > 0 {
-                lines.push(format!(
-                    "  tmux split-window -v -t \"$session\":{window} -c \"$project_dir\""
-                ));
-                pane_index += 1;
-            }
             for (col_idx, pane) in row.panes.iter().enumerate() {
-                if col_idx > 0 {
+                let direction = match (row_idx, col_idx) {
+                    (0, 0) => None,
+                    (_, 0) => Some("-v"),
+                    _ => Some("-h"),
+                };
+                if let Some(direction) = direction {
                     lines.push(format!(
-                        "  tmux split-window -h -t \"$session\":{window}.{} -c \"$project_dir\"",
-                        pane_index
+                        "  pane=$(tmux split-window {direction} {PRINT} -t \"$pane\" -c \"$project_dir\")"
                     ));
-                    pane_index += 1;
                 }
                 if !pane.command.is_empty() {
                     lines.push(format!(
-                        "  tmux send-keys -t \"$session\":{window}.{} {} C-m",
-                        pane_index,
+                        "  tmux send-keys -t \"$pane\" {} C-m",
                         shell_quote(&pane.command)
                     ));
                 }
             }
         }
-        lines.push(format!(
-            "  tmux select-layout -t \"$session\":{window} tiled >/dev/null 2>&1 || true"
-        ));
+        lines.push("  tmux select-layout -t \"$pane\" tiled >/dev/null 2>&1 || true".into());
     }
-    lines.extend(["  tmux select-window -t \"$session\":1".into(), "}".into()]);
-    fs::write(path, lines.join("\n") + "\n")?;
-    Ok(())
+    lines.extend(["  tmux select-window -t \"$first\"".into(), "}".into()]);
+    lines
 }
 
-fn tmux_ide_tab(tab: &LayoutTab, window: usize) -> Vec<String> {
+fn tmux_ide_tab(tab: &LayoutTab) -> Vec<String> {
     let editor = tab
         .rows
         .first()
@@ -314,20 +314,14 @@ fn tmux_ide_tab(tab: &LayoutTab, window: usize) -> Vec<String> {
         .map(|pane| pane.command.as_str())
         .unwrap_or("");
     let mut lines = vec![
-        format!(
-            "  tmux send-keys -t \"$session\":{window}.1 {} C-m",
-            shell_quote(editor)
-        ),
-        format!("  tmux split-window -h -p 35 -t \"$session\":{window}.1 -c \"$project_dir\""),
-        format!(
-            "  tmux send-keys -t \"$session\":{window}.2 {} C-m",
-            shell_quote(ai)
-        ),
-        format!("  tmux split-window -v -p 40 -t \"$session\":{window}.2 -c \"$project_dir\""),
+        format!("  tmux send-keys -t \"$pane\" {} C-m", shell_quote(editor)),
+        "  pane=$(tmux split-window -h -p 35 -P -F '#{pane_id}' -t \"$pane\" -c \"$project_dir\")".into(),
+        format!("  tmux send-keys -t \"$pane\" {} C-m", shell_quote(ai)),
+        "  pane=$(tmux split-window -v -p 40 -P -F '#{pane_id}' -t \"$pane\" -c \"$project_dir\")".into(),
     ];
     if !terminal.trim().is_empty() {
         lines.push(format!(
-            "  tmux send-keys -t \"$session\":{window}.3 {} C-m",
+            "  tmux send-keys -t \"$pane\" {} C-m",
             shell_quote(terminal)
         ));
     }

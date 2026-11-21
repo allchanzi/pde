@@ -40,6 +40,9 @@ jobs:
             fi
           done < <(find install.sh bin presets docker/pde -type f | sort)
 
+      - name: Check worktree deletion
+        run: python3 scripts/test_projects.py
+
   fresh-linux-install:
     runs-on: ubuntu-latest
     steps:

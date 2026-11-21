@@ -171,6 +171,13 @@ show_worktree_origin() {
   echo "origin:   unknown (worktree was created before metadata support)"
 }
 
+# No rm -rf fallback: when git refuses, the path may be the main checkout.
+remove_worktree() {
+  git worktree remove --force "$1" && return 0
+  echo "git refused to remove $1; nothing was deleted." >&2
+  return 1
+}
+
 delete_worktree() {
   local branch="$1"
   local worktree_path
@@ -190,8 +197,7 @@ delete_worktree() {
   tmux kill-session -t "$session" 2>/dev/null || true
 
   cd "$MAIN_PROJECT_DIR" || exit 1
-  git worktree remove --force "$worktree_path" 2>/dev/null || true
-  rm -rf "$worktree_path"
+  remove_worktree "$worktree_path" || return 1
   echo "Removed worktree '$branch' at $worktree_path"
 }
 
@@ -237,8 +243,7 @@ delete_all_worktrees() {
       tmux kill-session -t "$session" 2>/dev/null || true
     fi
 
-    git worktree remove --force "$current_path" 2>/dev/null || true
-    rm -rf "$current_path"
+    remove_worktree "$current_path" || continue
     echo "Removed worktree at $current_path"
   done < <(
     git worktree list --porcelain | awk '
@@ -385,8 +390,7 @@ if [[ -n "$BRANCH" ]]; then
   else
     if [[ -n "$EXISTING_PATH" && "$FORCE" -eq 1 ]]; then
       echo "Removing existing worktree for '$BRANCH' at $EXISTING_PATH..."
-      git worktree remove --force "$EXISTING_PATH" || true
-      rm -rf "$EXISTING_PATH"
+      remove_worktree "$EXISTING_PATH" || exit 1
     fi
 
     REPO_NAME="$(basename "$MAIN_PROJECT_DIR")"
@@ -516,27 +520,23 @@ if [[ -f "$TMUX_LAYOUT_LOCAL" ]]; then
   fi
 fi
 
-WINDOW_INDEX=1
-tmux new-session -d -s "$SESSION" -n terminal -c "$PROJECT_DIR"
-WINDOW_INDEX=2
+# Pane ids, not window numbers: the user's base-index may be 0 or 1.
+PRINT=(-P -F '#{pane_id}')
+FIRST_PANE="$(tmux new-session -d "${PRINT[@]}" -s "$SESSION" -n terminal -c "$PROJECT_DIR")"
 
-tmux new-window -t "$SESSION":2 -n editor -c "$PROJECT_DIR"
-tmux send-keys -t "$SESSION":2 "nvim ." C-m
-WINDOW_INDEX=3
+PANE="$(tmux new-window "${PRINT[@]}" -t "$SESSION": -n editor -c "$PROJECT_DIR")"
+tmux send-keys -t "$PANE" "nvim ." C-m
 if [[ -n "$AI_COMMAND_1" ]]; then
-  tmux new-window -t "$SESSION":$WINDOW_INDEX -n ai -c "$PROJECT_DIR"
-  tmux send-keys -t "$SESSION":$WINDOW_INDEX "$AI_COMMAND_1" C-m
+  PANE="$(tmux new-window "${PRINT[@]}" -t "$SESSION": -n ai -c "$PROJECT_DIR")"
+  tmux send-keys -t "$PANE" "$AI_COMMAND_1" C-m
   if [[ -n "$AI_COMMAND_2" ]]; then
-    tmux split-window -h -t "$SESSION":$WINDOW_INDEX
-    tmux send-keys -t "$SESSION":$WINDOW_INDEX.2 "$AI_COMMAND_2" C-m
+    PANE="$(tmux split-window -h "${PRINT[@]}" -t "$PANE")"
+    tmux send-keys -t "$PANE" "$AI_COMMAND_2" C-m
   fi
-  WINDOW_INDEX=$((WINDOW_INDEX + 1))
 fi
-tmux new-window -t "$SESSION":$WINDOW_INDEX -n git -c "$PROJECT_DIR"
-tmux send-keys -t "$SESSION":$WINDOW_INDEX "lazygit" C-m
-WINDOW_INDEX=$((WINDOW_INDEX + 1))
-tmux new-window -t "$SESSION":$WINDOW_INDEX -n k9s -c "$PROJECT_DIR"
-tmux send-keys -t "$SESSION":$WINDOW_INDEX "k9s" C-m
-WINDOW_INDEX=$((WINDOW_INDEX + 1))
-tmux select-window -t "$SESSION":1
+PANE="$(tmux new-window "${PRINT[@]}" -t "$SESSION": -n git -c "$PROJECT_DIR")"
+tmux send-keys -t "$PANE" "lazygit" C-m
+PANE="$(tmux new-window "${PRINT[@]}" -t "$SESSION": -n k9s -c "$PROJECT_DIR")"
+tmux send-keys -t "$PANE" "k9s" C-m
+tmux select-window -t "$FIRST_PANE"
 tmux attach-session -t "$SESSION"
