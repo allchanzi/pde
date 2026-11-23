@@ -50,6 +50,15 @@ jobs:
       - name: Check worktree deletion
         run: python3 scripts/test_projects.py
 
+      - name: Check supervised development workflow
+        run: python3 -B scripts/test_workflow.py
+
+      - name: Install Neovim
+        run: sudo apt-get update && sudo apt-get install -y neovim
+
+      - name: Check Neovim review comments
+        run: nvim --headless -u NONE -l scripts/test_workflow_review.lua
+
   fresh-linux-install:
     runs-on: ubuntu-latest
     steps:

@@ -31,6 +31,7 @@ usage() {
   echo "Usage:"
   echo "  pde"
   echo "  pde --version"
+  echo "  pde workflow"
   echo "  pde create"
   echo "  pde create <name> [path]"
   echo "  pde open [project]"
@@ -254,6 +255,10 @@ delete_all_worktrees() {
 }
 
 case "${1:-}" in
+  workflow)
+    shift
+    exec python3 "$CORE_BIN_DIR/workflow.py" "$@"
+    ;;
   "")
     if [[ -x "$MAIN_PROJECT_DIR/target/release/pde-tui" ]]; then
       export PDE_ROOT="$MAIN_PROJECT_DIR"

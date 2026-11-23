@@ -3,7 +3,7 @@ set -euo pipefail
 
 if [[ "${1:-}" == "--help" ]]; then
   echo "Usage: $0 [source-root] [output-directory]"
-  echo "source-root contains pde, fleetui, gtui, rtui, pantsui and tui-helpers."
+  echo "source-root contains pde, fleetui, gtui, rtui, pantsui, sentui, ntui and tui-helpers."
   echo "Builds a Linux release bundle and a matching source archive."
   exit 0
 fi
@@ -23,7 +23,7 @@ case "$(uname -m)" in
   *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
-PROJECTS=(pde fleetui gtui rtui pantsui tui-helpers)
+PROJECTS=(pde fleetui gtui rtui pantsui sentui ntui tui-helpers)
 for project in "${PROJECTS[@]}"; do
   [[ -f "$SOURCE_ROOT/$project/Cargo.toml" ]] || { echo "Missing source: $project" >&2; exit 1; }
 done
@@ -74,14 +74,14 @@ BUILD_TARGET="${PDE_RELEASE_TARGET_DIR:-$PDE_DIR/target}"
 mkdir -p "$BUILD_TARGET"
 BUILD_TARGET="$(cd "$BUILD_TARGET" && pwd)"
 source "$SOURCES/pde/scripts/rust-build-env.sh"
-for project in pde fleetui gtui rtui pantsui; do
+for project in pde fleetui gtui rtui pantsui sentui ntui; do
   cargo build --release --locked --manifest-path "$SOURCES/$project/Cargo.toml" --target-dir "$BUILD_TARGET"
 done
 
 cp -a "$SOURCES/pde" "$BUNDLE/pde"
 mkdir -p "$BUNDLE/pde/target/release"
 install -m 0755 "$BUILD_TARGET/release/pde-tui" "$BUNDLE/pde/target/release/pde-tui"
-for binary in fleetui gtui rtui pantsui; do
+for binary in fleetui gtui rtui pantsui sentui ntui; do
   install -m 0755 "$BUILD_TARGET/release/$binary" "$BUNDLE/bin/$binary"
 done
 for binary in "$BUNDLE/pde/bin/"*; do
@@ -127,7 +127,7 @@ cp "$SOURCES/BUILD-SOURCES.txt" "$BUNDLE/BUILD-SOURCES.txt"
 cat > "$BUNDLE/README.txt" <<EOF
 PDE v$VERSION full-development ($RUST_ARCH Linux)
 
-Includes PDE, fleetui, gtui, lazygit $LAZYGIT_VERSION, rtui, pantsui,
+Includes PDE, fleetui, gtui, lazygit $LAZYGIT_VERSION, rtui, pantsui, sentui, ntui,
 Neovim $NVIM_VERSION (with its runtime and licenses), and lazydocker $LAZYDOCKER_VERSION.
 Sources and build provenance accompany this release in $SOURCE_NAME.tar.gz.
 
@@ -136,7 +136,7 @@ Extract the archive to a permanent location, then run:
   pde
 
 In Create project or Edit project, select Layout, then press o and f.
-Save and start a new session to open the eight full-development tabs.
+Save and start a new session to open the ten full-development tabs.
 
 Requires a Linux system compatible with the glibc listed in BUILD-SOURCES.txt,
 and installed Bash, Python 3, Git, Zsh, and tmux or Zellij. Integrations use

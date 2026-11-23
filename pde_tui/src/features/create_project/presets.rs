@@ -12,10 +12,27 @@ fn full_development_layout() -> Vec<LayoutTab> {
         ("rtui", "rtui ."),
         ("pantsui", "pantsui"),
         ("lazydocker", "lazydocker"),
+        ("sentui", "sentui"),
+        ("ntui", "ntui"),
     ]
     .into_iter()
     .map(|(name, command)| command_tab(name, command))
     .collect()
+}
+
+fn full_dev_workflow_layout() -> Vec<LayoutTab> {
+    let mut tabs = full_development_layout();
+    for tab in &mut tabs {
+        tab.rows[0].panes[0].command = match tab.name.as_str() {
+            "terminal" => "pde workflow",
+            "nvim" => "pde workflow editor",
+            "fleetui" => "pde workflow agent",
+            "rtui" => "pde workflow api",
+            _ => continue,
+        }.into();
+    }
+    tabs[0].name = "workflow".into();
+    tabs
 }
 
 fn ide_tab() -> LayoutTab {
@@ -99,6 +116,7 @@ impl NewPaneChoice {
         match self {
             Self::EmptyPane => "Space",
             Self::FullDevelopment => "f",
+            Self::FullDevWorkflow => "w",
             Self::EditorTab => "e",
             Self::IdeTab => "i",
             Self::GitTab => "g",
@@ -114,6 +132,7 @@ impl NewPaneChoice {
         match self {
             Self::EmptyPane => "Empty tab",
             Self::FullDevelopment => "full-development",
+            Self::FullDevWorkflow => "full-dev-workflow",
             Self::EditorTab => "Editor tab",
             Self::IdeTab => "IDE tab",
             Self::GitTab => "Git tab",
@@ -128,7 +147,8 @@ impl NewPaneChoice {
     fn description(self) -> &'static str {
         match self {
             Self::EmptyPane => "New empty tab/tab with one shell pane",
-            Self::FullDevelopment => "Replace layout with 8 development tabs",
+            Self::FullDevelopment => "Replace layout with 10 development tabs",
+            Self::FullDevWorkflow => "Connected task, PR/MR review and supervised fixes (10 tabs)",
             Self::EditorTab => "New tab running ${EDITOR:-nvim} .",
             Self::IdeTab => "New tab: editor left, AI top-right, terminal bottom-right",
             Self::GitTab => "New tab running lazygit",
@@ -145,7 +165,7 @@ impl CreateProjectState {
     fn available_presets(&self) -> Vec<NewPaneChoice> {
         NEW_PANE_CHOICES.into_iter().filter(|choice| match choice {
             NewPaneChoice::EmptyPane => true,
-            NewPaneChoice::FullDevelopment => self.available_full_development,
+            NewPaneChoice::FullDevelopment | NewPaneChoice::FullDevWorkflow => self.available_full_development,
             NewPaneChoice::EditorTab => command_available(env::var("EDITOR").unwrap_or_else(|_| "nvim".into()).split_whitespace().next().unwrap_or("nvim")),
             NewPaneChoice::IdeTab => command_available(env::var("EDITOR").unwrap_or_else(|_| "nvim".into()).split_whitespace().next().unwrap_or("nvim")) && command_available(env::var("AI_COMMAND_1").unwrap_or_else(|_| "codex".into()).split_whitespace().next().unwrap_or("codex")),
             NewPaneChoice::GitTab => command_available("lazygit"),

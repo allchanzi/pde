@@ -12,7 +12,7 @@ impl CreateProjectState {
             selected_multiplexer: 0,
             available_rtui: command_available("rtui"),
             available_pantsui: command_available("pantsui"),
-            available_full_development: ["nvim", "fleetui", "gtui", "lazygit", "rtui", "pantsui", "lazydocker"]
+            available_full_development: ["nvim", "fleetui", "gtui", "lazygit", "rtui", "pantsui", "lazydocker", "sentui", "ntui"]
                 .into_iter()
                 .all(command_available),
             enable_rtui: capabilities_enabled && command_available("rtui"),

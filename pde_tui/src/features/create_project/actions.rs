@@ -139,6 +139,7 @@ impl CreateProjectState {
             }
             KeyCode::Enter => self.apply_new_pane_picker_choice(),
             KeyCode::Char('f') => self.apply_new_pane_choice(NewPaneChoice::FullDevelopment),
+            KeyCode::Char('w') => self.apply_new_pane_choice(NewPaneChoice::FullDevWorkflow),
             KeyCode::Char('e') => self.apply_new_pane_choice(NewPaneChoice::EditorTab),
             KeyCode::Char('i') => self.apply_new_pane_choice(NewPaneChoice::IdeTab),
             KeyCode::Char('g') => self.apply_new_pane_choice(NewPaneChoice::GitTab),
@@ -184,7 +185,14 @@ impl CreateProjectState {
                 self.selected_tab = 0;
                 self.selected_row = 0;
                 self.selected_pane = 0;
-                Effect::Message("Applied full-development layout (8 tabs)".into())
+                Effect::Message("Applied full-development layout (10 tabs)".into())
+            }
+            NewPaneChoice::FullDevWorkflow => {
+                self.layout = full_dev_workflow_layout();
+                self.selected_tab = 0;
+                self.selected_row = 0;
+                self.selected_pane = 0;
+                Effect::Message("Applied full-dev-workflow (10 connected tabs)".into())
             }
             NewPaneChoice::EmptyPane => {
                 self.add_window();

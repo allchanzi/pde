@@ -97,6 +97,7 @@ enum CapabilityChoice {
 enum NewPaneChoice {
     EmptyPane,
     FullDevelopment,
+    FullDevWorkflow,
     EditorTab,
     IdeTab,
     GitTab,
@@ -113,9 +114,10 @@ struct NewPanePickerState {
     search: PickerSearch,
 }
 
-const NEW_PANE_CHOICES: [NewPaneChoice; 10] = [
+const NEW_PANE_CHOICES: [NewPaneChoice; 11] = [
     NewPaneChoice::EmptyPane,
     NewPaneChoice::FullDevelopment,
+    NewPaneChoice::FullDevWorkflow,
     NewPaneChoice::EditorTab,
     NewPaneChoice::IdeTab,
     NewPaneChoice::GitTab,
@@ -284,7 +286,7 @@ mod tests {
         );
         assert_eq!(state.handle_new_pane_picker_key(KeyCode::Esc), Effect::None);
         assert!(state.new_pane_picker.is_some());
-        for character in "/8 development".chars() {
+        for character in "/10 development".chars() {
             state.handle_new_pane_picker_key(KeyCode::Char(character));
         }
         state.handle_new_pane_picker_key(KeyCode::Enter);
@@ -471,12 +473,40 @@ mod tests {
                     ("rtui", "rtui ."),
                     ("pantsui", "pantsui"),
                     ("lazydocker", "lazydocker"),
+                    ("sentui", "sentui"),
+                    ("ntui", "ntui"),
                 ]
             );
             assert_ne!(state.draft(), state.baseline);
             press(&mut state, KeyCode::Char('o'));
             press(&mut state, KeyCode::Char('f'));
             assert_eq!(state.layout, spec.layout);
+        }
+    }
+
+    #[test]
+    fn workflow_layout_is_opt_in_and_available_in_create_and_edit() {
+        for edit in [None, Some("project".into())] {
+            let mut state = CreateProjectState::new();
+            state.edit_slug = edit;
+            state.available_full_development = true;
+            state.field = Field::Layout;
+            state.open_new_pane_picker();
+            state.handle_new_pane_picker_key(KeyCode::Char('w'));
+            assert_eq!(state.layout, full_dev_workflow_layout());
+            let commands: Vec<_> = state
+                .layout
+                .iter()
+                .map(|tab| tab.rows[0].panes[0].command.as_str())
+                .collect();
+            assert_eq!(commands[0], "pde workflow");
+            assert_eq!(commands[1], "pde workflow editor");
+            assert_eq!(commands[2], "pde workflow agent");
+            assert_eq!(commands[5], "pde workflow api");
+            assert_eq!(
+                full_development_layout()[2].rows[0].panes[0].command,
+                "fleetui"
+            );
         }
     }
 
