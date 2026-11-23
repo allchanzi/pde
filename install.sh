@@ -356,6 +356,7 @@ install_cargo_tool() {
 
 if ensure_rust; then
   persist_rustup_for_zsh
+  source "$CONFIG_DIR/scripts/rust-build-env.sh"
   echo "🦀 Building PDE TUI..."
   cargo build --release --manifest-path "$CONFIG_DIR/pde_tui/Cargo.toml"
   ln -sf "$CONFIG_DIR/target/release/pde-tui" "$BIN_DIR/pde-tui"

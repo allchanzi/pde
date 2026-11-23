@@ -27,7 +27,7 @@ PROJECTS=(pde fleetui gtui rtui pantsui tui-helpers)
 for project in "${PROJECTS[@]}"; do
   [[ -f "$SOURCE_ROOT/$project/Cargo.toml" ]] || { echo "Missing source: $project" >&2; exit 1; }
 done
-for tool in cargo gh tar sha256sum; do
+for tool in cargo gh tar sha256sum python3; do
   command -v "$tool" >/dev/null || { echo "Missing build tool: $tool" >&2; exit 1; }
 done
 
@@ -73,6 +73,7 @@ ldd --version | sed -n '1p' >> "$SOURCES/BUILD-SOURCES.txt"
 BUILD_TARGET="${PDE_RELEASE_TARGET_DIR:-$PDE_DIR/target}"
 mkdir -p "$BUILD_TARGET"
 BUILD_TARGET="$(cd "$BUILD_TARGET" && pwd)"
+source "$SOURCES/pde/scripts/rust-build-env.sh"
 for project in pde fleetui gtui rtui pantsui; do
   cargo build --release --locked --manifest-path "$SOURCES/$project/Cargo.toml" --target-dir "$BUILD_TARGET"
 done
@@ -147,8 +148,10 @@ EOF
 "$BUNDLE/bin/nvim" --headless -u NONE -i NONE '+lua assert(vim.fn.isdirectory(vim.env.VIMRUNTIME) == 1)' +qa
 "$BUNDLE/bin/lazydocker" --version
 "$BUNDLE/bin/lazygit" --version
-tar -czf "$OUTPUT_DIR/$NAME.tar.gz" -C "$STAGING_DIR" "$NAME"
-tar -czf "$OUTPUT_DIR/$SOURCE_NAME.tar.gz" -C "$STAGING_DIR" "$SOURCE_NAME"
+tar --owner=0 --group=0 --numeric-owner -czf "$OUTPUT_DIR/$NAME.tar.gz" -C "$STAGING_DIR" "$NAME"
+tar --owner=0 --group=0 --numeric-owner -czf "$OUTPUT_DIR/$SOURCE_NAME.tar.gz" -C "$STAGING_DIR" "$SOURCE_NAME"
+python3 "$SOURCES/pde/scripts/check_release_privacy.py" \
+  "$OUTPUT_DIR/$NAME.tar.gz" "$OUTPUT_DIR/$SOURCE_NAME.tar.gz"
 (
   cd "$OUTPUT_DIR"
   sha256sum "$NAME.tar.gz" "$SOURCE_NAME.tar.gz" > "$NAME.sha256"

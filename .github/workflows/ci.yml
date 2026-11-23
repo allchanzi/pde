@@ -30,6 +30,13 @@ jobs:
       - name: Lint Rust workspace
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+      - name: Build release without local paths
+        shell: bash
+        run: |
+          source scripts/rust-build-env.sh
+          cargo build --workspace --release --locked
+          python3 scripts/check_release_privacy.py target/release/pde-tui
+
       - name: Check shell syntax
         shell: bash
         run: |
