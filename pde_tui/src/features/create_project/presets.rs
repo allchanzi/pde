@@ -10,10 +10,10 @@ fn full_development_layout() -> Vec<LayoutTab> {
         ("gtui", "gtui"),
         ("lazygit", "lazygit"),
         ("rtui", "rtui ."),
-        ("pantsui", "pantsui"),
         ("lazydocker", "lazydocker"),
         ("sentui", "sentui"),
         ("ntui", "ntui"),
+        ("pantsui", "pantsui"),
     ]
     .into_iter()
     .map(|(name, command)| command_tab(name, command))

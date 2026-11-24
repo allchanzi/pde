@@ -471,10 +471,10 @@ mod tests {
                     ("gtui", "gtui"),
                     ("lazygit", "lazygit"),
                     ("rtui", "rtui ."),
-                    ("pantsui", "pantsui"),
                     ("lazydocker", "lazydocker"),
                     ("sentui", "sentui"),
                     ("ntui", "ntui"),
+                    ("pantsui", "pantsui"),
                 ]
             );
             assert_ne!(state.draft(), state.baseline);
