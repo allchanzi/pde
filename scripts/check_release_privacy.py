@@ -12,6 +12,9 @@ roots = {
 }
 prefixes = [str(root).rstrip("/").encode() + b"/" for root in roots if root != Path("/")]
 
+# Unmodified upstream downloads embed their own CI paths, which match $HOME on GitHub runners.
+UPSTREAM = ("lib/nvim/", "bin/lazydocker", "bin/lazygit")
+
 
 def check_content(name: str, data: bytes) -> None:
     for prefix in prefixes:
@@ -28,7 +31,7 @@ for argument in sys.argv[1:]:
                     raise SystemExit(f"{artifact}: contains local archive ownership")
                 check_content(member.name, member.name.encode())
                 check_content(member.name, member.linkname.encode())
-                if member.isfile():
+                if member.isfile() and not member.name.partition("/")[2].startswith(UPSTREAM):
                     with archive.extractfile(member) as source:
                         check_content(member.name, source.read())
     else:
