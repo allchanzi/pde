@@ -48,6 +48,7 @@ pub enum Mode {
 }
 
 pub struct App {
+    pub text_area: std::cell::Cell<ratatui::layout::Rect>,
     pub mode: Mode,
     pub workspace: WorkspaceState,
     pub theme: UiTheme,
@@ -73,6 +74,7 @@ impl App {
             details_max_scroll: 0,
             which_key: crate::leader::which_key(),
             pending_command: None,
+            text_area: Default::default(),
             help_popup: ScrollPopup::default(),
         })
     }
@@ -298,6 +300,7 @@ impl App {
             details_max_scroll: 0,
             which_key: crate::leader::which_key(),
             pending_command: None,
+            text_area: Default::default(),
             help_popup: ScrollPopup::default(),
         }
     }

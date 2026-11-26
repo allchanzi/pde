@@ -12,7 +12,7 @@ crossterm = "0.29"
 ratatui = "0.30"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rustline = { git = "https://github.com/allchanzi/tui-helpers", rev = "def5058a50a3491e667d1aa5bda03aafd47a0e39" }
-whichkey = { git = "https://github.com/allchanzi/tui-helpers", rev = "def5058a50a3491e667d1aa5bda03aafd47a0e39" }
-panels = { git = "https://github.com/allchanzi/tui-helpers", rev = "def5058a50a3491e667d1aa5bda03aafd47a0e39" }
-tuikit = { git = "https://github.com/allchanzi/tui-helpers", rev = "def5058a50a3491e667d1aa5bda03aafd47a0e39" }
+rustline = { git = "https://github.com/allchanzi/tui-helpers", rev = "ea97318dc22767476ea1d385435ec7260f360631" }
+whichkey = { git = "https://github.com/allchanzi/tui-helpers", rev = "ea97318dc22767476ea1d385435ec7260f360631" }
+panels = { git = "https://github.com/allchanzi/tui-helpers", rev = "ea97318dc22767476ea1d385435ec7260f360631" }
+tuikit = { git = "https://github.com/allchanzi/tui-helpers", rev = "ea97318dc22767476ea1d385435ec7260f360631" }

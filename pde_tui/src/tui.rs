@@ -36,24 +36,41 @@ pub fn run(app: App) -> Result<()> {
 fn init_terminal() -> Result<AppTerminal> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen).context("failed to enter alternate screen")?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        crossterm::event::EnableMouseCapture
+    )
+    .context("failed to enter alternate screen")?;
     Terminal::new(CrosstermBackend::new(stdout)).context("failed to create terminal")
 }
 
 fn restore_terminal(terminal: &mut AppTerminal) -> Result<()> {
     disable_raw_mode().context("failed to disable raw mode")?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)
-        .context("failed to leave alternate screen")?;
+    execute!(
+        terminal.backend_mut(),
+        crossterm::event::DisableMouseCapture,
+        LeaveAlternateScreen
+    )
+    .context("failed to leave alternate screen")?;
     terminal.show_cursor().context("failed to show cursor")
 }
 
 fn event_loop(terminal: &mut AppTerminal, mut app: App) -> Result<()> {
+    let mut selection = tuikit::TextSelection::default();
     loop {
         if let Some(message) = app.workspace.poll_background() {
             app.message = message;
         }
-        terminal.draw(|frame| render(frame, &mut app))?;
-        if let Some(effect) = next_effect(&mut app)? {
+        terminal.draw(|frame| {
+            render(frame, &mut app);
+            selection.capture(frame.buffer_mut(), app.text_area.get());
+            selection.paint(
+                frame,
+                ratatui::style::Style::new().add_modifier(ratatui::style::Modifier::REVERSED),
+            );
+        })?;
+        if let Some(effect) = next_effect(&mut app, &mut selection)? {
             match effect {
                 Effect::Quit => return Ok(()),
                 Effect::Suspend(command) => run_suspended(terminal, &mut app, &command)?,
@@ -86,7 +103,7 @@ fn run_suspended(
     Ok(())
 }
 
-fn next_effect(app: &mut App) -> Result<Option<Effect>> {
+fn next_effect(app: &mut App, selection: &mut tuikit::TextSelection) -> Result<Option<Effect>> {
     let timeout = if app.workspace.background_pending() {
         16
     } else {
@@ -96,7 +113,11 @@ fn next_effect(app: &mut App) -> Result<Option<Effect>> {
         return Ok(None);
     }
 
-    let Event::Key(key) = event::read()? else {
+    let event = event::read()?;
+    if selection.event(&event) {
+        return Ok(None);
+    }
+    let Event::Key(key) = event else {
         return Ok(None);
     };
 
@@ -111,6 +132,7 @@ fn next_effect(app: &mut App) -> Result<Option<Effect>> {
 }
 
 fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
+    app.text_area.set(ratatui::layout::Rect::default());
     if tuikit::too_small(frame, frame.area()) {
         return;
     }
@@ -122,22 +144,44 @@ fn render(frame: &mut ratatui::Frame<'_>, app: &mut App) {
     match &mut app.mode {
         Mode::CreateProject(state) => {
             let area = centered_rect(94, 94, main);
-            create_project::render(frame, area, state, &app.theme, !app.show_help, &app.message);
+            app.text_area.set(create_project::render(
+                frame,
+                area,
+                state,
+                &app.theme,
+                !app.show_help,
+                &app.message,
+            ));
         }
         Mode::Worktree(state) => {
             let area = centered_rect(80, 80, main);
-            worktree::render(frame, area, state, &app.theme, !app.show_help);
+            app.text_area.set(worktree::render(
+                frame,
+                area,
+                state,
+                &app.theme,
+                !app.show_help,
+            ));
         }
-        Mode::Workspace => workspace::render(frame, main, &mut app.workspace, &app.theme),
+        Mode::Workspace => app.text_area.set(workspace::render(
+            frame,
+            main,
+            &mut app.workspace,
+            &app.theme,
+        )),
     }
     crate::leader::draw_status(frame, footer, app);
     crate::leader::draw_which_key(frame, app);
+    if app.which_key.is_open() || app.pending_command.is_some() {
+        app.text_area.set(ratatui::layout::Rect::default());
+    }
 
     if app.details.open {
         render_details(frame, app, main);
     }
     if app.show_help {
         render_help_popup(frame, main, app);
+        app.text_area.set(app.help_popup.text_area.get());
     }
 }
 
@@ -160,6 +204,7 @@ fn render_details(frame: &mut ratatui::Frame<'_>, app: &mut App, content: ratatu
         .highlight_style(app.theme.selected()),
         tabs,
     );
+    app.text_area.set(body);
     let mut lines = app.workspace.details(app.details.tab);
     if app.details.tab == 4 {
         lines.extend([
@@ -236,7 +281,11 @@ mod tests {
     use ratatui::backend::TestBackend;
     fn screen(app: &mut App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-        terminal.draw(|frame| render(frame, app)).unwrap();
+        terminal
+            .draw(|frame| {
+                render(frame, app);
+            })
+            .unwrap();
         terminal
             .backend()
             .buffer()

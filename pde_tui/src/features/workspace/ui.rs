@@ -3,7 +3,7 @@ pub fn render(
     area: Rect,
     state: &mut WorkspaceState,
     theme: &UiTheme,
-) {
+) -> Rect {
     // Two columns when wide; one stacked column (focused card enlarged) when narrow.
     let focus_index = match state.focus {
         FocusPane::Projects => 0,
@@ -16,7 +16,7 @@ pub fn render(
             .wide_from(100)
             .layout(area, Some(focus_index))[..]
     else {
-        return;
+        return Rect::default();
     };
 
     let focused = match state.focus {
@@ -32,6 +32,7 @@ pub fn render(
     render_global_sessions(frame, global_sessions, state, theme);
     render_workspaces(frame, workspaces, state, theme);
     render_project_sessions(frame, project_sessions, state, theme);
+    ratatui::widgets::Block::bordered().inner(focused)
 }
 
 fn render_projects(

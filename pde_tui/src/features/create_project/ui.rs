@@ -5,7 +5,7 @@ pub fn render(
     theme: &UiTheme,
     cursor_enabled: bool,
     message: &str,
-) {
+) -> Rect {
     frame.render_widget(Clear, area);
     let [content, footer] = Layout::default()
         .direction(Direction::Vertical)
@@ -37,9 +37,15 @@ pub fn render(
     if cursor_enabled {
         render_text_field_cursor(frame, columns[0], state);
     }
-    render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
+    let layout_text_area = render_layout_preview(frame, columns[1], state, theme, cursor_enabled);
     if let Some(picker) = &state.new_pane_picker {
         render_new_pane_picker(frame, area, picker, state, theme, cursor_enabled);
+        return Block::bordered().inner(centered_rect(84, 80, area));
+    }
+    if state.field == Field::Layout {
+        layout_text_area
+    } else {
+        Block::bordered().inner(columns[0])
     }
 }
 
@@ -181,7 +187,7 @@ fn render_layout_preview(
     state: &CreateProjectState,
     theme: &UiTheme,
     cursor_enabled: bool,
-) {
+) -> Rect {
     let mode = match state.layout_mode {
         LayoutEditMode::Navigate => "select pane",
         LayoutEditMode::EditCommand => "type command",
@@ -201,13 +207,13 @@ fn render_layout_preview(
     frame.render_widget(block, area);
 
     if inner.width < 8 || inner.height < 4 {
-        return;
+        return inner;
     }
 
     let tab = state.current_tab();
     if tab.preset == Some(LayoutPreset::Ide) {
         render_ide_preview(frame, inner, tab, theme);
-        return;
+        return inner;
     }
 
     let row_percentages = percentages(tab.rows.iter().map(|row| row.ratio));
@@ -221,6 +227,7 @@ fn render_layout_preview(
         .constraints(row_constraints)
         .split(inner);
 
+    let mut text_area = inner;
     for (row_index, row) in tab.rows.iter().enumerate() {
         let row_area = row_chunks[row_index];
         let pane_percentages = percentages(row.panes.iter().map(|pane| pane.ratio));
@@ -267,6 +274,9 @@ fn render_layout_preview(
                 } else {
                     theme.border()
                 });
+            if selected {
+                text_area = pane_block.inner(pane_chunks[pane_index]);
+            }
             let paragraph = Paragraph::new(content)
                 .block(pane_block)
                 .wrap(Wrap { trim: false });
@@ -277,7 +287,7 @@ fn render_layout_preview(
         }
     }
 
-
+    text_area
 }
 
 fn render_ide_preview(

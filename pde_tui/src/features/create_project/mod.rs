@@ -315,7 +315,9 @@ mod tests {
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(70, 16)).unwrap();
         terminal
-            .draw(|frame| render(frame, frame.area(), &state, &theme, true, ""))
+            .draw(|frame| {
+                render(frame, frame.area(), &state, &theme, true, "");
+            })
             .unwrap();
         let text = terminal
             .backend()
@@ -333,7 +335,9 @@ mod tests {
         }
         state.handle_new_pane_picker_key(KeyCode::Enter);
         terminal
-            .draw(|frame| render(frame, frame.area(), &state, &theme, true, ""))
+            .draw(|frame| {
+                render(frame, frame.area(), &state, &theme, true, "");
+            })
             .unwrap();
         let text = terminal
             .backend()

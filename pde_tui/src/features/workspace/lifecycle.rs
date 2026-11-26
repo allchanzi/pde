@@ -76,6 +76,7 @@ impl WorkspaceState {
             vec![
                 theme.shortcut_line(""),
                 Line::from(Span::styled("Global shortcuts", theme.title())),
+                theme.shortcut_line("Mouse drag in active pane • [y/Ctrl+c] copy • [Esc] cancel"),
                 theme.shortcut_line("[Space] leader menu (which-key)"),
                 theme.shortcut_line("[?] toggle help"),
                 theme.shortcut_line("[Tab/Shift+Tab] next/previous pane"),

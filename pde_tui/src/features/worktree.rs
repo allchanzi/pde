@@ -236,7 +236,7 @@ pub fn render(
     state: &mut WorktreeState,
     theme: &UiTheme,
     cursor: bool,
-) {
+) -> Rect {
     frame.render_widget(Clear, area);
     let [content, footer] = Layout::default()
         .direction(Direction::Vertical)
@@ -319,6 +319,7 @@ pub fn render(
         Paragraph::new(theme.shortcut_line(state.shortcuts())).wrap(Wrap { trim: true }),
         shortcuts,
     );
+    Block::bordered().inner(content)
 }
 
 fn parse_branches(raw: &str) -> Vec<String> {
@@ -437,7 +438,9 @@ mod tests {
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(60, 12)).unwrap();
         terminal
-            .draw(|frame| render(frame, frame.area(), &mut state, &theme, true))
+            .draw(|frame| {
+                render(frame, frame.area(), &mut state, &theme, true);
+            })
             .unwrap();
         let text = terminal
             .backend()
@@ -452,7 +455,9 @@ mod tests {
             .handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
             .unwrap();
         terminal
-            .draw(|frame| render(frame, frame.area(), &mut state, &theme, true))
+            .draw(|frame| {
+                render(frame, frame.area(), &mut state, &theme, true);
+            })
             .unwrap();
         let text = terminal
             .backend()
@@ -524,7 +529,9 @@ mod tests {
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 30)).unwrap();
         let theme = UiTheme::load(std::path::Path::new("/nonexistent-theme"));
         terminal
-            .draw(|frame| render(frame, frame.area(), &mut state, &theme, true))
+            .draw(|frame| {
+                render(frame, frame.area(), &mut state, &theme, true);
+            })
             .unwrap();
         let buffer = terminal.backend().buffer();
         let text = buffer
